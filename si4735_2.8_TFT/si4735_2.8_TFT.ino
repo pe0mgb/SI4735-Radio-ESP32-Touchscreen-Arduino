@@ -1,13 +1,4 @@
-//  Version 1.1 PE0MGB                            17-04-2020
-//  MUTE added. Volume controle with encoder      17-04-2020
-//  Version 1.0 PE0MGB                            13-04-2020
-//  Minor changes and bugs                        12-04-2020
-//  Minor changes and bugs                        09-04-2020
-//  RDS added                                     31-03-2020
-//  Preset bug solved                             30-03-2020
-//  Wake-up display also with encoder             29-03-2020
-//  Some bugs solved                              25-03-2020
-//  AGC corrected                                 24-03-2020
+//  Version 2.0 Second layer added. Other small changes.  29-04-2020
 
 //  This sketch is based on the si4735 Library of Ricardo PU2CLR. Thanks for the very nice work.
 
@@ -728,7 +719,8 @@ void DrawDispl()
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("SI4735 Radio");
+  Serial.println("     SI4735 Radio");
+  Serial.println("Version 2.0   29-04-2020");
   pinMode(Display_Led, OUTPUT);
   pinMode(BEEPER, OUTPUT);
   digitalWrite(Display_Led, displayon);
