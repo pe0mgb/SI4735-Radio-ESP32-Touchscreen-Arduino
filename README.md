@@ -24,7 +24,7 @@ Program features :
   
     Bandwidth control for AM and SSB.
   
-    On screenKeyboard for frequency control.
+    On screen Keyboard for frequency control.
   
     Tuningstep control for all broad and ham bands (exept FM)
   
