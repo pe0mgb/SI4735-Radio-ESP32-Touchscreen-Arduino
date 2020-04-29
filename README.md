@@ -1,5 +1,5 @@
 # SI4735-Radio-ESP32-Touchscreen-Arduino
-This a sketch using the SI4735 library developed by Ricardo PU2CLR.
+This a sketch is using the SI4735 library developed by Ricardo PU2CLR.
 The sketch is developed for running at a ESP32 WROOM-32, a 2.8 inch 240*320 Touchscreen with an ILI9341 controler and Rotary Encoder with Switch.
 
 The manual controle of the radio is 100% done by the touchscreen and Rotary Encoder.
