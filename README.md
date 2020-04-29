@@ -26,7 +26,7 @@ Program features :
   
     On screen Keyboard for frequency control.
   
-    Tuningstep control for all broad and ham bands (exept FM)
+    Tuningstep control for all broad and ham bands (except FM)
   
     Mute.
   
