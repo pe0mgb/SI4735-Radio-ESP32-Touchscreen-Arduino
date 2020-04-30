@@ -1,9 +1,10 @@
+//  Versio  2.1 SNR Threshold for RDS.
 //  Version 2.0 Second layer added. Other small changes.  29-04-2020
 
 //  This sketch is based on the si4735 Library of Ricardo PU2CLR. Thanks for the very nice work.
 
 //  This sketch uses  a 2.8 inch 240*320 touch-screen with ILI9341, ESP32 WROOM-32 and Rotary Encoder.
-//  The radio is fully controlled by the (Touch)Screen.
+//  The radio is fully controlled by the (Touch)Screen and Rotary Encoder
 
 //  This sketch uses the Rotary Encoder Class implementation from Ben Buxton (the source code is included
 //  together with this sketch).
@@ -55,7 +56,7 @@
 //  |            |     17      |    |            |      3     |            |
 //  |            |     33      |    |            |      5     |            |
 //  |            |     32 2K   |    |            |            |     In     |
-//  |            |             |    |            |            |            |
+//  |            |     27 Mute |    |see schematics           |            |
 //  |------------|-------------|----|------------|------------|------------|
 
 
@@ -475,36 +476,36 @@ typedef struct // Band data
 //   Band table
 
 Band band[] = {
-  {   "FM", FM_BAND_TYPE, FM,  8750, 10800,  9890, 10}, //  FM          0
-  {   "LW", LW_BAND_TYPE, AM,   153,   279,   198, 9},  //  LW          1
-  {   "MW", MW_BAND_TYPE, AM,   522,  1701,  1008, 9},  //  MW          2
-  {"BACON", LW_BAND_TYPE, AM,   280,   470,   284, 5},  // Ham          3
+  {   "FM", FM_BAND_TYPE,  FM,  8750, 10800,  9890,10}, //  FM          0
+  {   "LW", LW_BAND_TYPE,  AM,   153,   279,   198, 9}, //  LW          1
+  {   "MW", MW_BAND_TYPE,  AM,   522,  1701,  1008, 9}, //  MW          2
+  {"BACON", LW_BAND_TYPE,  AM,   280,   470,   284, 5}, // Ham          3
   { "630M", SW_BAND_TYPE, LSB,   472,   479,   475, 1}, // Ham  630M    4
   { "160M", SW_BAND_TYPE, LSB,  1800,  1910,  1899, 1}, // Ham  160M    5
-  { "120M", SW_BAND_TYPE, AM,  2300,  2495,  2400, 5},  //      120M    6
-  {  "90M", SW_BAND_TYPE, AM,  3200,  3400,  3300, 5},  //       90M    7
+  { "120M", SW_BAND_TYPE,  AM,  2300,  2495,  2400, 5}, //      120M    6
+  {  "90M", SW_BAND_TYPE,  AM,  3200,  3400,  3300, 5}, //       90M    7
   {  "80M", SW_BAND_TYPE, LSB,  3500,  3800,  3700, 1}, // Ham   80M    8
-  {  "75M", SW_BAND_TYPE, AM,  3900,  4000,  3950, 5},  //       75M    9
+  {  "75M", SW_BAND_TYPE,  AM,  3900,  4000,  3950, 5}, //       75M    9
   {  "60M", SW_BAND_TYPE, USB,  5330,  5410,  5375, 1}, // Ham   60M   10
-  {  "49M", SW_BAND_TYPE, AM,  5900,  6200,  6000, 5},  //       49M   11
+  {  "49M", SW_BAND_TYPE,  AM,  5900,  6200,  6000, 5}, //       49M   11
   {  "40M", SW_BAND_TYPE, LSB,  7000,  7200,  7132, 1}, // Ham   40M   12
-  {  "41M", SW_BAND_TYPE, AM,  7200,  7450,  7210, 5},  //       41M   13
-  {  "31M", SW_BAND_TYPE, AM,  9400,  9900,  9600, 5},  //       31M   14
+  {  "41M", SW_BAND_TYPE,  AM,  7200,  7450,  7210, 5}, //       41M   13
+  {  "31M", SW_BAND_TYPE,  AM,  9400,  9900,  9600, 5}, //       31M   14
   {  "30M", SW_BAND_TYPE, USB, 10100, 10150, 10125, 1}, // Ham   30M   15
-  {  "25M", SW_BAND_TYPE, AM, 11600, 12100, 11700, 5},  //       25M   16
-  {  "22M", SW_BAND_TYPE, AM, 13570, 13870, 13700, 5},  //       22M   17
+  {  "25M", SW_BAND_TYPE,  AM, 11600, 12100, 11700, 5}, //       25M   16
+  {  "22M", SW_BAND_TYPE,  AM, 13570, 13870, 13700, 5}, //       22M   17
   {  "20M", SW_BAND_TYPE, USB, 14000, 14350, 14200, 1}, // Ham   20M   18
-  {  "19M", SW_BAND_TYPE, AM, 15100, 15830, 15700, 5},  //       19M   19
+  {  "19M", SW_BAND_TYPE,  AM, 15100, 15830, 15700, 5}, //       19M   19
   {  "17M", SW_BAND_TYPE, USB, 18068, 18168, 18100, 1}, // Ham   17M   20
-  {  "16M", SW_BAND_TYPE, AM, 17480, 17900, 17600, 5},  //       16M   21
-  {  "15M", SW_BAND_TYPE, AM, 18900, 19020, 18950, 5},  //       15M   22
+  {  "16M", SW_BAND_TYPE,  AM, 17480, 17900, 17600, 5}, //       16M   21
+  {  "15M", SW_BAND_TYPE,  AM, 18900, 19020, 18950, 5}, //       15M   22
   {  "15M", SW_BAND_TYPE, USB, 21000, 21450, 21350, 1}, // Ham   15M   23
-  {  "13M", SW_BAND_TYPE, AM, 21450, 21850, 21500, 5},  //       13M   24
+  {  "13M", SW_BAND_TYPE,  AM, 21450, 21850, 21500, 5}, //       13M   24
   {  "12M", SW_BAND_TYPE, USB, 24890, 24990, 24940, 1}, // Ham   12M   25
-  {  "11M", SW_BAND_TYPE, AM, 25670, 26100, 25800, 5},  //       11M   26
-  {   "CB", SW_BAND_TYPE, AM, 26200, 27990, 27200, 1},  // CB band     27
+  {  "11M", SW_BAND_TYPE,  AM, 25670, 26100, 25800, 5}, //       11M   26
+  {   "CB", SW_BAND_TYPE,  AM, 26200, 27990, 27200, 1}, // CB band     27
   {  "10M", SW_BAND_TYPE, USB, 28000, 30000, 28500, 1}, // Ham   10M   28
-  {   "SW", SW_BAND_TYPE, AM,  1730, 30000, 15500, 5}   // Whole SW    29
+  {   "SW", SW_BAND_TYPE,  AM,  1730, 30000, 15500, 5}  // Whole SW    29
 };
 //======================================================= End THE Band Definitions     ========================
 
@@ -1538,7 +1539,7 @@ void DisplayRDS()
         tft.fillRect(XFreqDispl + 60, YFreqDispl + 60, 140, 20, TFT_BLACK);
       }
 
-      if (RDS) checkRDS();
+      if ((RDS) and  (NewSNR >= 20)) checkRDS();
     }
     elapsedRDS = millis();
   }
