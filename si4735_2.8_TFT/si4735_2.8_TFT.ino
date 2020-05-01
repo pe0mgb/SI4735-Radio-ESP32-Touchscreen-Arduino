@@ -30,7 +30,7 @@
 //
 //  Library TFT_eSPI you may download from here : https://github.com/Bodmer/TFT_eSPI
 //  Library Rotary is provided with the program
-//  Library SI4735 you may download from here :
+//  Library SI4735 you may download from here   : https://github.com/pu2clr/SI4735
 //
 //  *********************************
 //  **   Display connections etc.  **
@@ -196,14 +196,13 @@ char bufferStatioName[255];
 char bufferRdsMsg[255];
 char bufferRdsTime[32];
 
-
-//=======================================================   Buttons First Layer   ==========================
+//=======================================================   Buttons First and Third Layer   ==========================
 typedef struct // Buttons first layer
 {
   const char *ButtonNam;
   uint8_t     ButtonNum;       // Button location at display from 0 to 11. To move around buttons freely at first layer.
   const char *ButtonNam1;
-  uint8_t     ButtonNum1;       // Button location at display from 0 to 11. To move around buttons freely at first layer.
+  uint8_t     ButtonNum1;      // Button location at display from 0 to 11. To move around buttons freely at third layer.
   uint16_t    XButos;          // Xoffset
   uint16_t    YButos;          // Yoffset
 } Button;
@@ -264,7 +263,7 @@ int Xbut11 = 2 * Xbutsiz ; int Ybut11 = 3 * Ybutsiz;
 #define PREV     11
 
 Button bt[] = {
-  { "HAM"   ,  0 , "SEEKUP", 0 , Xbut0 , Ybut0  }, //     |----|----|----|       |----|----|----|
+  { "HAM"   ,  0 , "SEEKUP", 0 , Xbut0 , Ybut0  }, //     |----|----|----|
   { "BFO"   ,  3 , "SEEKDN", 3 , Xbut1 , Ybut1  }, //     |  0 |  1 |  2 |
   { "FREQ"  ,  2 , "STATUS",10 , Xbut2 , Ybut2  }, //     |----|----|----|
   { "AGC"   ,  4 , ""      , 1 , Xbut3 , Ybut3  }, //     |  3 |  4 |  5 |
@@ -277,9 +276,9 @@ Button bt[] = {
   { "PRESET", 10 , ""      , 2 , Xbut10, Ybut10 },
   { "NEXT"  , 11 , "PREV", 11 , Xbut11, Ybut11 }
 };
-
-
-//======================================================= End  Buttons First Layer   ======================
+// You may freely move around the button (blue) position on the display to your flavour by changing the position in ButtonNum and ButtonNum1
+// You have to stay in the First or Third Layer
+//======================================================= End  Buttons First  and Third Layer   ======================
 
 
 //======================================================= Tunings Steps     ===============================
