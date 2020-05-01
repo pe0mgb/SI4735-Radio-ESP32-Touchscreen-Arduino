@@ -40,3 +40,4 @@ Program features :
   
     Automatic gain control (AGC)
  
+    To save power from the battery, display is switching off after 5 minutes.
