@@ -1,5 +1,5 @@
-//  Versio  2.1 SNR Threshold for RDS.
-//  Version 2.0 Second layer added. Other small changes.  29-04-2020
+//  Version 2.1 SNR Threshold for RDS added.             30-04-2020
+//  Version 2.0 Third layer added. Other small changes.  29-04-2020
 
 //  This sketch is based on the si4735 Library of Ricardo PU2CLR. Thanks for the very nice work.
 
@@ -27,6 +27,10 @@
 //  Given this, it is at your own risk to continue with the procedures suggested here.
 //  This library works with the I2C communication protocol and it is designed to apply a SSB extension PATCH to CI SI4735-D60.
 //  Once again, the author disclaims any liability for any damage this procedure may cause to your SI4735 or other devices that you are using.
+//
+//  Library TFT_eSPI you may download from here : https://github.com/Bodmer/TFT_eSPI
+//  Library Rotary is provided with the program
+//  Library SI4735 you may download from here :
 //
 //  *********************************
 //  **   Display connections etc.  **
@@ -535,7 +539,8 @@ FM_Preset preset[] = {
   10320 , "VERONICA",  // 14 VERONICA
   10380 , "RADIO 10",  // 15 RADIO 10
   10460 , "100% NL",   // 16 100% NL
-  9220  , "L-FM"       // 17 L-FM
+  9220  , "L-FM",      // 17 L-FM 
+  10760 , "FEELGOOD"   // 18 FEELGOOD Radio
 };
 
 
@@ -715,10 +720,8 @@ void DrawDispl()
 }
 
 //=======================================================================================
-//=======================================================================================
-
-
 void setup() {
+//=======================================================================================
   Serial.begin(115200);
   Serial.println("     SI4735 Radio");
   Serial.println("Version 2.0   29-04-2020");
@@ -816,7 +819,10 @@ void setup() {
 //=========================================================================================================
 //*********************************************************************************************************
 
+
+//=======================================================================================
 void BandSet()
+//=======================================================================================
 {
   if (bandIdx == 0) currentMode = 0;// only mod FM in FM band
   if ((currentMode == AM) or (currentMode == FM)) ssbLoaded = false;
@@ -831,8 +837,9 @@ void BandSet()
   setBandWidth();
 }
 
-
+//=======================================================================================
 void useBand()
+//=======================================================================================
 {
 
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
@@ -872,7 +879,9 @@ void useBand()
   delay(100);
 }// end useband
 
+//=======================================================================================
 void setBandWidth()
+//=======================================================================================
 {
   if (currentMode == LSB || currentMode == USB)
   {
@@ -889,8 +898,9 @@ void setBandWidth()
   }
 }
 
-
+//=======================================================================================
 void loadSSB()
+//=======================================================================================
 {
   si4735.reset();
   si4735.queryLibraryId(); // Is it really necessary here? I will check it.
@@ -914,7 +924,9 @@ void loadSSB()
   ssbLoaded = true;
 }
 
+//=======================================================================================
 void Freqcalq(int keyval)
+//=======================================================================================
 {
   if (Decipoint) {
     dpfrq = dpfrq + keyval / fact;
@@ -935,23 +947,25 @@ void Freqcalq(int keyval)
   }
 }
 
+
+//=======================================================================================
 void Smeter() {
+//=======================================================================================
   tft.fillRect(Xsmtr + 15, Ysmtr + 38 , (2 + rssi), 6, TFT_RED);
   tft.fillRect(Xsmtr + 17 + rssi, Ysmtr + 38 , 212 - (2 + rssi), 6, TFT_GREEN);
 }
 
+//=======================================================================================
 void VolumeIndicator(int vol) {
-
+//=======================================================================================
   vol = map(vol, 20, 63, 0, 212);
   tft.fillRect(XVolInd + 15, YVolInd + 16 , (2 + vol), 6, TFT_RED);
   tft.fillRect(XVolInd + 17 + vol, YVolInd + 16 , 212 - (2 + vol), 6, TFT_GREEN);
 }
 
-//============================================================================================
-void loop() {  //*****************************************************************************
-  //******************************************************************************************
-
-
+//=======================================================================================
+void loop() {
+//=======================================================================================
   unsigned long now = millis();
 
   if ((FirstLayer == true) or (ThirdLayer == true)) VolumeIndicator(si4735.getVolume());
@@ -1500,12 +1514,14 @@ void loop() {  //***************************************************************
     FreqDispl();
   }
 
-
+//=======================================================================================
 }// end loop
-//===========================================================================================================
-//===========================================================================================================
-//===========================================================================================================
+//=======================================================================================
+
+
+//=======================================================================================
 void Dispoff()  {
+//=======================================================================================
   if (((millis() - DisplayOnTime) > MIN_ELAPSED_DISPL_TIME * 300) and (DISplay == true)) {
     DISplay = false;
     digitalWrite(Display_Led, displayoff);
@@ -1516,7 +1532,9 @@ void Dispoff()  {
   }
 }
 
+//=======================================================================================
 void VOLbutoff()  {
+//=======================================================================================
   if (((millis() - VOLbutOnTime) > MIN_ELAPSED_VOLbut_TIME * 30) and (VOLbut == true)) {
     VOLbut = false;
     drawVOL();
@@ -1528,8 +1546,9 @@ void VOLbutoff()  {
 
 
 
-
+//=======================================================================================
 void DisplayRDS()
+//=======================================================================================
 {
   if ((millis() - elapsedRDS) > MIN_ELAPSED_RDS_TIME * 10) // 5 * 10  = 50 Ms  refresh time RDS
   {
@@ -1545,7 +1564,9 @@ void DisplayRDS()
   }
 }
 
+//=======================================================================================
 void showtimeRSSI() {
+//=======================================================================================
   // Show RSSI status only if this condition has changed
   if ((millis() - elapsedRSSI) > MIN_ELAPSED_RSSI_TIME * 10) // 150 * 10  = 1.5 sec refresh time RSSI
   {
@@ -1561,7 +1582,9 @@ void showtimeRSSI() {
   }
 }
 
+//=======================================================================================
 void showRSSI() {
+//=======================================================================================
   if ((  currentMode == FM ) and ((FirstLayer) or (ThirdLayer))) {
     sprintf(buffer, "%s", (si4735.getCurrentPilot()) ? "STEREO" : "MONO");
     tft.setTextColor(TFT_GREEN, TFT_BLACK);
