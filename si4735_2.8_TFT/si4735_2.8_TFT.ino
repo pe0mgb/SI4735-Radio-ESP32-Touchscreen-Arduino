@@ -571,21 +571,8 @@ SI4735 si4735;
 
 
 void FreqDispl()
-{
-    Serial.print("FirstLayer = ");
-    Serial.println(FirstLayer);
-    Serial.print("ThirdLayer = ");
-    Serial.println(ThirdLayer);
-    Serial.print("SEEK = ");
-    Serial.println(SEEK);
-  if ((FirstLayer) or (ThirdLayer)) {
-    Serial.print("FirstLayer = ");
-    Serial.println(FirstLayer);
-    Serial.print("ThirdLayer = ");
-    Serial.println(ThirdLayer);
-    Serial.print("SEEK = ");
-    Serial.println(SEEK);
-   
+{  
+  if ((FirstLayer) or (ThirdLayer)) { 
     currentFrequency = si4735.getFrequency();  
     tft.setTextSize(4);
     tft.setTextColor(TFT_YELLOW, TFT_BLACK);
@@ -681,7 +668,6 @@ void DrawDispl()
   tft.setTextColor(TFT_GREEN, TFT_BLACK);
   tft.setTextDatum(BC_DATUM);
   tft.drawString(band[bandIdx].bandName, XFreqDispl + 160, YFreqDispl + 20);
-  Serial.println("Freqdispl");
   FreqDispl();
   if (band[bandIdx].bandType != FM_BAND_TYPE) {
     tft.setTextSize(1);
@@ -1715,8 +1701,6 @@ void DrawFila()// Draw of first layer
   SecondLayer = false;
   tft.fillScreen(TFT_BLACK);
   DrawButFila();
-  Serial.println("Drawdisplay");
-  
   DrawDispl();
   DrawSmeter();
   DrawVolumeIndicator();
