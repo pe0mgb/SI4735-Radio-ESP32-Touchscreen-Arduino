@@ -21,6 +21,8 @@ Program features :
     FM, AM and SSB (USB & LSB) modulation. SSB controlled by BFO.
   
     Band selection for Broadcast (17) and Ham bands (11).
+    
+    Prefered modulation for all Ham and Broadcast bands.
   
     Bandwidth control for AM and SSB.
   
