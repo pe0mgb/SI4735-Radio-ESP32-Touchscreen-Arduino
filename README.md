@@ -20,6 +20,8 @@ Program features :
     
     S-meter (scale is fake)
     
+    SNR and RSSI indication.
+    
     Volume indicator.
   
     FM Stereo and RDS. RDS has a SNR theshold and on / off button.
@@ -28,7 +30,8 @@ Program features :
   
     FM, AM and SSB (USB & LSB) modulation. SSB controlled by BFO.
     
-    Preset for FM controlled by rotary encoder. May by finished by rotary encoder switch or automatically by waking up the screen. 
+    Preset for FM controlled by rotary encoder. 
+    May by finished by rotary encoder switch or automatically by waking up the screen. 
   
     Band selection for Broadcast (17) and Ham bands (11).
     
@@ -52,4 +55,6 @@ Program features :
     Manual gain control by the rotary encoder.
  
     To save power from the battery, display is switching off after 5 minutes. 
-    Display is waking up by the use of one of the controllers e.g. screen, rotary controller or rotary controller switch
+    Display is waking up by the use of one of the controllers e.g. screen, rotary controller or rotary controller switch.
+    
+    Power consumption 120 mA and 80 mA when display is switched off.
