@@ -1,11 +1,12 @@
-//  Version 2.1 SNR Threshold for RDS added.             30-04-2020
-//  Version 2.0 Third layer added. Other small changes.  29-04-2020
+//  Version 2.3 26-05-2020 Receiver setup stored in EEPROM. TFT display setup horizontal or vertical. AGC control added. Some bugs solved.
+//  Version 2.2 12-05-2020 AGC attenuation added & other small changes.
+//  Version 2.1 30-04-2020 SNR Threshold for RDS added.                 
+//  Version 2.0 29-04-2020 Third layer added. Other small changes.       
 
 //  This sketch is based on the si4735 Library of Ricardo PU2CLR. Thanks for the very nice work.
 
 //  This sketch uses  a 2.8 inch 240*320 touch-screen with ILI9341, ESP32 WROOM-32 and Rotary Encoder.
 //  The radio is fully controlled by the (Touch)Screen and Rotary Encoder
-
 //  This sketch uses the Rotary Encoder Class implementation from Ben Buxton (the source code is included
 //  together with this sketch).
 //  For the touch-screen the library TFT_eSPI is used. The configuration setup-file: setup1_ILI9341 is also
@@ -67,7 +68,11 @@
 #include <TFT_eSPI.h>
 #include <SPI.h>
 #include <SI4735.h>
+#include "EEPROM.h"
 #include "Rotary.h"
+
+#define IhaveVertTFT
+//#define IhaveHoriTFT
 
 // Test it with patch_init.h or patch_full.h. Do not try load both.
 #include "patch_init.h" // SSB patch for whole SSBRX initialization string
@@ -94,12 +99,13 @@ const uint16_t size_content = sizeof ssb_patch_content; // see ssb_patch_content
 #define SW_BAND_TYPE 2
 #define LW_BAND_TYPE 3
 
-#define MIN_ELAPSED_TIME       100
-#define MIN_ELAPSED_RSSI_TIME  150
-#define MIN_ELAPSED_DISPL_TIME 1000
-#define MIN_ELAPSED_RDS_TIME   5
-#define DEFAULT_VOLUME         45 // change it for your favorite start sound volume
-#define MIN_ELAPSED_VOLbut_TIME 1000
+#define MIN_ELAPSED_TIME             100
+#define MIN_ELAPSED_RSSI_TIME        150
+#define MIN_ELAPSED_DISPL_TIME      1000
+#define MIN_ELAPSED_RDS_TIME           5
+#define DEFAULT_VOLUME                45 // change it for your favorite start sound volume
+#define MIN_ELAPSED_VOLbut_TIME     1000
+
 
 #define FM          0
 #define LSB         1
@@ -125,6 +131,8 @@ bool PRESbut = false;
 bool VOLbut = false;
 bool DISplay = false;
 bool Mutestat = false;
+bool AGCgainbut = false;
+bool writingEeprom = false;
 
 bool pressed;
 bool press1;
@@ -133,57 +141,68 @@ bool audioMuteOff = false;
 bool RDS = true; // RDS on  or  off
 bool SEEK =  false;
 
-int currentBFO    = 0;
-int previousBFO   = 0;
-int currentPRES   = 0;
-int previousPRES  = 0;
-int currentVOL    = 0;
-int previousVOL   = 0;
-int MaxVOL        = 63;
-int MinVOL        = 20;
-
-int nrbox = 0;
+int currentBFO;
+int previousBFO = 0;
+int nrbox       = 0;
 int OldRSSI;
 int NewRSSI;
 int NewSNR;
 int encBut;
+int AGCgain     = 0;
+
 long elapsedRSSI        = millis();
 long elapsedRDS         = millis();
 long DisplayOnTime      = millis();
 long VOLbutOnTime       = millis();
 
-
-// Encoder control variables
-volatile int encoderCount = 0;
+volatile int encoderCount  = 0;
 
 uint16_t previousFrequency;
-uint8_t currentStep = 1;
+uint8_t currentStep        =  1;
 
-uint8_t currentBFOStep = 25;
-uint8_t currentPRESStep = 1;
-uint8_t currentVOLStep = 1;
+uint8_t currentBFOStep     = 25;
 
-uint8_t currentAGCAtt = 0;
+uint8_t currentPRES        =  0;
+uint8_t previousPRES       =  0;
+uint8_t currentPRESStep    =  1;
+
+uint8_t currentAGCgain     =  1;
+uint8_t previousAGCgain    =  1;
+uint8_t currentAGCgainStep =  1;
+uint8_t MaxAGCgain;
+uint8_t MaxAGCgainFM       = 26;
+uint8_t MaxAGCgainAM       = 37;
+uint8_t MinAGCgain         =  1;
+
+
+
+uint8_t currentVOL         =  0;
+uint8_t previousVOL        =  0;
+uint8_t currentVOLStep     =  1;
+uint8_t MaxVOL             = 63;
+uint8_t MinVOL             = 20;
+
+uint8_t currentAGCAtt      =  0;
 uint8_t bwIdxSSB;
 uint8_t bwIdxAM;
 uint8_t bandIdx;
-uint8_t stepIdx;
 uint8_t currentMode = FM;
 uint8_t previousMode;
 uint16_t x = 0, y = 0; // To store the touch coordinates
+uint8_t encoderStatus;
 
-
-float Displayfreq = 0;
+float Displayfreq      = 0;
 float currentFrequency = 0;
-float dpfrq = 0;
-float fact = 1;
+float dpfrq            = 0;
+float fact             = 1;
 
 String BWtext;
+String RDSbuttext;
+String AGCgainbuttext;
 
 const char *bandwidthSSB[] = {"1.2", "2.2", "3.0", "4.0", "0.5", "1.0"};
-const char *bandwidthAM[]  = {"6", "4", "3", "2", "1", "1.8", "2.5"};
+const char *bandwidthAM[]  = {"6.0", "4.0", "3.0", "2.0", "1.0", "1.8", "2.5"};
 const char *Keypathtext[]  = {"1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "Send", "Clear"};
-const char *misctext[]     = {"STATUS", "Seekup", "Seekdown", "SSB avc-on", "SSB avc-off", "RDS on/off"};
 const char *bandModeDesc[] = {"FM ", "LSB", "USB", "AM "};
 
 char buffer[64];          // Useful to handle string
@@ -204,7 +223,7 @@ typedef struct // Buttons first layer
   const char *ButtonNam1;
   uint8_t     ButtonNum1;      // Button location at display from 0 to 11. To move around buttons freely at third layer.
   uint16_t    XButos;          // Xoffset
-  uint16_t    YButos;          // Yoffset
+  long    YButos;          // Yoffset
 } Button;
 int ytotoffset = 0;
 //  Button table
@@ -220,9 +239,10 @@ int YVolInd = 135 + ytotoffset;  // Volume indicator
 int XFreqDispl  =   0;
 int YFreqDispl  =   0 + ytotoffset;  // display
 
-int Xbutsiz =  80;  //size of buttons first layer
+int Xbutsiz =  80;  //size of buttons first & third layer
 int Ybutsiz =  40;
 
+#ifdef IhaveVertTFT
 int Xbut0  = 0 * Xbutsiz ; int Ybut0  = 0 * Ybutsiz; // location calqualation for 12 first layer buttons
 int Xbut1  = 1 * Xbutsiz ; int Ybut1  = 0 * Ybutsiz;
 int Xbut2  = 2 * Xbutsiz ; int Ybut2  = 0 * Ybutsiz;
@@ -235,6 +255,22 @@ int Xbut8  = 2 * Xbutsiz ; int Ybut8  = 2 * Ybutsiz;
 int Xbut9  = 0 * Xbutsiz ; int Ybut9  = 3 * Ybutsiz;
 int Xbut10 = 1 * Xbutsiz ; int Ybut10 = 3 * Ybutsiz;
 int Xbut11 = 2 * Xbutsiz ; int Ybut11 = 3 * Ybutsiz;
+#endif
+
+#ifdef IhaveHoriTFT
+int Xbut0  = 0 * Xbutsiz ; int Ybut0  = 0 * Ybutsiz; // location calqualation for 12 first layer buttons
+int Xbut1  = 1 * Xbutsiz ; int Ybut1  = 0 * Ybutsiz;
+int Xbut2  = 2 * Xbutsiz ; int Ybut2  = 0 * Ybutsiz;
+int Xbut3  = 3 * Xbutsiz ; int Ybut3  = 0 * Ybutsiz;
+int Xbut4  = 0 * Xbutsiz ; int Ybut4  = 1 * Ybutsiz;
+int Xbut5  = 1 * Xbutsiz ; int Ybut5  = 1 * Ybutsiz;
+int Xbut6  = 2 * Xbutsiz ; int Ybut6  = 1 * Ybutsiz;
+int Xbut7  = 3 * Xbutsiz ; int Ybut7  = 1 * Ybutsiz;
+int Xbut8  = 3 * Xbutsiz ; int Ybut8  =-4 * Ybutsiz;
+int Xbut9  = 3 * Xbutsiz ; int Ybut9  =-3 * Ybutsiz;
+int Xbut10 = 3 * Xbutsiz ; int Ybut10 =-2 * Ybutsiz;
+int Xbut11 = 3 * Xbutsiz ; int Ybut11 =-1 * Ybutsiz;
+#endif
 
 #define HAM       0
 #define BFO       1
@@ -252,34 +288,55 @@ int Xbut11 = 2 * Xbutsiz ; int Ybut11 = 3 * Ybutsiz;
 #define SEEKUP    0
 #define SEEKDN    1
 #define STATUS    2
-#define NR2       3
-#define NR3       4
+#define RDSbut    3
+#define AGCset    4
 #define NR4       5
 #define NR5       6
 #define NR6       7
-#define NR7       8
-#define NR8       9
-#define NR9      10
-#define PREV     11
+#define NR7       8   //                                                 |----|
+#define NR8       9   //                                                 |  8 |
+#define NR9      10   //                                                 |----|
+#define PREV     11   //                                                 |  9 |  
+                      //                                                 |----|
+                      //                                                 | 10 |
+#ifdef IhaveHoriTFT   //                                                 |----|
+Button bt[] = {       //                                                 | 11 |
+  { "HAM"   ,  0 , "SEEKUP", 0 , Xbut0 , Ybut0  }, //     |----|----|----|----|
+  { "BFO"   ,  4 , "SEEKDN", 4 , Xbut1 , Ybut1  }, //     |  0 |  1 |  2 |  3 |
+  { "FREQ"  ,  2 , "STATUS", 6 , Xbut2 , Ybut2  }, //     |----|----|----|----|
+  { "AGC"   ,  5 , "RDS"   , 8 , Xbut3 , Ybut3  }, //     |  4 |  5 |  6 |  7 |
+  { "MUTE"  ,  9 , "AGCset", 1 , Xbut4 , Ybut4  }, //     |----|----|----|----|
+  { "VOL"   ,  8 , ""      , 5 , Xbut5 , Ybut5  },    
+  { "MODE"  ,  3 , ""      ,10 , Xbut6 , Ybut6  },    
+  { "BANDW" ,  6 , ""      ,11 , Xbut7 , Ybut7  },     
+  { "STEP"  , 11 , ""      , 2 , Xbut8 , Ybut8  },    
+  { "BROAD" ,  1 , ""      , 3 , Xbut9 , Ybut9  },
+  { "PRESET", 10 , ""      , 9 , Xbut10, Ybut10 },
+  { "NEXT"  ,  7 , "PREV"  , 7 , Xbut11, Ybut11 }
+};
+#endif
 
-Button bt[] = {
+#ifdef IhaveVertTFT     //                                                 
+Button bt[] = {       //                                                 
   { "HAM"   ,  0 , "SEEKUP", 0 , Xbut0 , Ybut0  }, //     |----|----|----|
   { "BFO"   ,  3 , "SEEKDN", 3 , Xbut1 , Ybut1  }, //     |  0 |  1 |  2 |
   { "FREQ"  ,  2 , "STATUS",10 , Xbut2 , Ybut2  }, //     |----|----|----|
-  { "AGC"   ,  4 , ""      , 1 , Xbut3 , Ybut3  }, //     |  3 |  4 |  5 |
-  { "MUTE"  ,  8 , ""      , 4 , Xbut4 , Ybut4  }, //     |----|----|----|
-  { "VOL"   ,  7 , ""      , 5 , Xbut5 , Ybut5  }, //     |  6 |  7 |  8 |
-  { "MODE"  ,  9 , ""      , 6 , Xbut6 , Ybut6  }, //     |----|----|----|
-  { "BANDW" ,  5 , ""      , 7 , Xbut7 , Ybut7  }, //     |  9 | 10 | 12 |
-  { "STEP"  ,  6 , ""      , 8 , Xbut8 , Ybut8  }, //     |----|----|----|
-  { "BROAD" ,  1 , ""      , 9 , Xbut9 , Ybut9  },
-  { "PRESET", 10 , ""      , 2 , Xbut10, Ybut10 },
-  { "NEXT"  , 11 , "PREV", 11 , Xbut11, Ybut11 }
+  { "AGC"   ,  4 , "RDS"   , 9 , Xbut3 , Ybut3  }, //     |  3 |  4 |  5 |
+  { "MUTE"  ,  8 , "AGCset", 2 , Xbut4 , Ybut4  }, //     |----|----|----|
+  { "VOL"   ,  7 , ""      , 5 , Xbut5 , Ybut5  }, //     |  6 |  7 |  8 |     
+  { "MODE"  ,  9 , ""      , 6 , Xbut6 , Ybut6  }, //     |----|----|----|     
+  { "BANDW" ,  5 , ""      , 7 , Xbut7 , Ybut7  }, //     |  9 | 10 | 11 |     
+  { "STEP"  ,  6 , ""      , 8 , Xbut8 , Ybut8  }, //     |----|----|----|     
+  { "BROAD" ,  1 , ""      , 1 , Xbut9 , Ybut9  },
+  { "PRESET", 10 , ""      , 4 , Xbut10, Ybut10 },
+  { "NEXT"  , 11 , "PREV"  ,11 , Xbut11, Ybut11 }
 };
+#endif
+
+
 // You may freely move around the button (blue) position on the display to your flavour by changing the position in ButtonNum and ButtonNum1
 // You have to stay in the First or Third Layer
 //======================================================= End  Buttons First  and Third Layer   ======================
-
 
 //======================================================= Tunings Steps     ===============================
 typedef struct // Tuning steps
@@ -294,11 +351,18 @@ typedef struct // Tuning steps
 
 //  Tuning steps table
 
-int Xfstep = 80;
-int Yfstep = 90;
+#ifdef IhaveHoriTFT
+  int Xfstep = 110;
+  int Yfstep = 60;
+#endif
+
+#ifdef IhaveVertTFT
+  int Xfstep =  70;
+  int Yfstep = 100;
+#endif
 
 Step sp[] = {
-  { 1 , Xfstep, 100, Yfstep, 30, 0},
+  { 1 , Xfstep, 100, Yfstep, 30,  0},
   { 5 , Xfstep, 100, Yfstep, 30, 30},
   { 9 , Xfstep, 100, Yfstep, 30, 60},
   { 10, Xfstep, 100, Yfstep, 30, 90}
@@ -318,11 +382,18 @@ typedef struct // MODULATION
 
 //  Modulation table
 
-int Xfmod = 70;
-int Yfmod = 90;
+#ifdef IhaveHoriTFT
+  int Xfmod = 110;
+  int Yfmod = 45;
+#endif
+
+#ifdef IhaveVertTFT
+  int Xfmod = 70;
+  int Yfmod = 90;
+#endif
 
 Mode md[] = {
-  { 0  , Xfmod, 100, Yfmod, 30, 0},
+  { 0  , Xfmod, 100, Yfmod, 30,  0},
   { 1  , Xfmod, 100, Yfmod, 30, 30},
   { 2  , Xfmod, 100, Yfmod, 30, 60},
   { 3  , Xfmod, 100, Yfmod, 30, 90}
@@ -335,7 +406,7 @@ typedef struct // Keypath
   uint16_t KeypNum;
   uint16_t Xkeypos;          //Xoffset
   uint16_t Xkeypsr;          //X size rectang
-  uint16_t Xkeypnr;          //X next rectang
+  uint16_t Xkeypnr;          //Y next rectang
   uint16_t Ykeypos;          //Yoffset
   uint16_t Ykeypsr;          //X size rectang
   uint16_t Ykeypnr;          //Y next rectang
@@ -343,8 +414,29 @@ typedef struct // Keypath
 
 //  Keypath table
 
+#ifdef IhaveHoriTFT
 int Xpath = 30;
-int Ypath = 75;
+int Ypath = 30;
+
+Keypath kp[] = {
+  {  0 , Xpath,  50 ,   0 , Ypath , 50 ,   0},
+  {  1 , Xpath,  50 ,  50 , Ypath , 50 ,   0},
+  {  2 , Xpath,  50 , 100 , Ypath , 50 ,   0},
+  {  3 , Xpath,  50 ,   0 , Ypath , 50 ,  50},
+  {  4 , Xpath,  50 ,  50 , Ypath , 50 ,  50},
+  {  5 , Xpath,  50 , 100 , Ypath , 50 ,  50},
+  {  6 , Xpath,  50 ,   0 , Ypath , 50 , 100},
+  {  7 , Xpath,  50 ,  50 , Ypath , 50 , 100},
+  {  8 , Xpath,  50 , 100 , Ypath , 50 , 100},
+  {  9 , Xpath,  50 ,   0 , Ypath , 50 , 150},
+  { 10 , Xpath,  50 ,  50 , Ypath , 50 , 150},
+  { 11 , Xpath,  50 , 100 , Ypath , 50 , 150},
+};
+#endif
+
+#ifdef IhaveVertTFT
+int Xpath = 30;
+int Ypath = 30;
 
 Keypath kp[] = {
   {  0 , Xpath,  60 ,   0 , Ypath , 60 ,   0},
@@ -360,6 +452,7 @@ Keypath kp[] = {
   { 10 , Xpath,  60 ,  60 , Ypath , 60 , 180},
   { 11 , Xpath,  60 , 120 , Ypath , 60 , 180},
 };
+#endif
 //======================================================= End Keypath     =====================================
 
 //======================================================= Bandwidth AM & FM     ===============================
@@ -371,19 +464,25 @@ typedef struct // Bandwidth AM & SSB
   uint16_t Xsr;          //X size rectang
   uint16_t Yos;          //Yoffset
   uint16_t Ysr;          //X size rectang
-  uint16_t Ynr;    //Y next rectang
+  uint16_t Ynr;          //Y next rectang
 } Bandwidth;
 
 //  Bandwidth table
+#ifdef IhaveHoriTFT
+int XfBW = 110;
+int YfBW = 23;
+#endif
 
+#ifdef IhaveVertTFT
 int XfBW = 70;
-int YfBW = 60;
+int YfBW = 45;
+#endif
 
 Bandwidth bw[] = {
-  { 4 , 4 , XfBW, 100, YfBW, 30, 0},
-  { 5 , 5 , XfBW, 100, YfBW, 30, 30},
-  { 3 , 0 , XfBW, 100, YfBW, 30, 60},
-  { 6 , 1 , XfBW, 100, YfBW, 30, 90},
+  { 4 , 4 , XfBW, 100, YfBW, 30,   0},
+  { 5 , 5 , XfBW, 100, YfBW, 30,  30},
+  { 3 , 0 , XfBW, 100, YfBW, 30,  60},
+  { 6 , 1 , XfBW, 100, YfBW, 30,  90},
   { 2 , 2 , XfBW, 100, YfBW, 30, 120},
   { 1 , 3 , XfBW, 100, YfBW, 30, 150},
   { 0 , 0 , XfBW, 100, YfBW, 30, 180}
@@ -404,28 +503,36 @@ typedef struct // Broad-Band switch
 
 //  Bandnumber table for the broad-bands
 
-int Xfbband = 10;
-int Yfbband = 30;
+#ifdef IhaveVertTFT
+int Xfbband = 0;
+int Yfbband = 45;
+#endif
+
+#ifdef IhaveHoriTFT
+int Xfbband = 40;
+int Yfbband = 15;
+#endif
+
 
 BBandnumber bb[] = {
-  {  0 , Xfbband, 110 ,   0 , Yfbband , 30 ,   0}, // 0
-  {  1 , Xfbband, 110 ,   0 , Yfbband , 30 ,  30}, // 1
-  {  2 , Xfbband, 110 ,   0 , Yfbband , 30 ,  60}, // 2
-  {  6 , Xfbband, 110 ,   0 , Yfbband , 30 ,  90}, // 3
-  {  7 , Xfbband, 110 ,   0 , Yfbband , 30 , 120}, // 4
-  {  9 , Xfbband, 110 ,   0 , Yfbband , 30 , 150}, // 5
-  { 11 , Xfbband, 110 ,   0 , Yfbband , 30 , 180}, // 6
-  { 13 , Xfbband, 110 ,   0 , Yfbband , 30 , 210}, // 7
-  { 14 , Xfbband, 110 ,   0 , Yfbband , 30 , 240}, // 8
-  { 16 , Xfbband, 110 , 110 , Yfbband , 30 ,   0}, // 9
-  { 17 , Xfbband, 110 , 110 , Yfbband , 30 ,  30}, //10
-  { 19 , Xfbband, 110 , 110 , Yfbband , 30 ,  60}, //11
-  { 21 , Xfbband, 110 , 110 , Yfbband , 30 ,  90}, //12
-  { 22 , Xfbband, 110 , 110 , Yfbband , 30 , 120}, //13
-  { 24 , Xfbband, 110 , 110 , Yfbband , 30 , 150}, //14
-  { 26 , Xfbband, 110 , 110 , Yfbband , 30 , 180}, //15
-  { 27 , Xfbband, 110 , 110 , Yfbband , 30 , 210}, //16
-  { 29 , Xfbband, 110 , 110 , Yfbband , 30 , 240}, //17
+  {  0 , Xfbband, 80 ,   0 , Yfbband , 30 ,   0}, // 0
+  {  1 , Xfbband, 80 ,   0 , Yfbband , 30 ,  30}, // 1
+  {  2 , Xfbband, 80 ,   0 , Yfbband , 30 ,  60}, // 2
+  {  6 , Xfbband, 80 ,   0 , Yfbband , 30 ,  90}, // 3
+  {  7 , Xfbband, 80 ,   0 , Yfbband , 30 , 120}, // 4
+  {  9 , Xfbband, 80 ,   0 , Yfbband , 30 , 150}, // 5
+  { 11 , Xfbband, 80 ,   0 , Yfbband , 30 , 180}, // 6
+  { 13 , Xfbband, 80 ,   80 , Yfbband , 30 , 0}, // 7
+  { 14 , Xfbband, 80 ,   80 , Yfbband , 30 , 30}, // 8
+  { 16 , Xfbband, 80 , 80 , Yfbband , 30 ,   60}, // 9
+  { 17 , Xfbband, 80 , 80 , Yfbband , 30 ,  90}, //10
+  { 19 , Xfbband, 80 , 80 , Yfbband , 30 ,  120}, //11
+  { 21 , Xfbband, 80 , 80 , Yfbband , 30 ,  150}, //12
+  { 22 , Xfbband, 80 , 80 , Yfbband , 30 , 180}, //13
+  { 24 , Xfbband, 80 , 160 , Yfbband , 30 , 0}, //14
+  { 26 , Xfbband, 80 , 160 , Yfbband , 30 , 30}, //15
+  { 27 , Xfbband, 80 , 160 , Yfbband , 30 , 60}, //16
+  { 29 , Xfbband, 80 , 160 , Yfbband , 30 , 90}, //17
 
 };
 //======================================================= End Broad Band Definitions     ======================
@@ -445,8 +552,15 @@ typedef struct // Ham Band switch
 
 //  Bandnumber table for the hambands
 
-int Xfband = 10;
-int Yfband = 30;
+#ifdef IhaveVertTFT
+  int Xfband = 10;
+  int Yfband = 30;
+#endif
+
+#ifdef IhaveHoriTFT
+  int Xfband = 50;
+  int Yfband = 30;
+#endif
 
 Bandnumber bn[] = {
   {  3 , 0 , Xfband, 110 ,   0 , Yfband , 30 ,   0},
@@ -480,9 +594,9 @@ typedef struct // Band data
 
 Band band[] = {
   {   "FM", FM_BAND_TYPE,  FM,  8750, 10800,  9890,10}, //  FM          0
-  {   "LW", LW_BAND_TYPE,  AM,   153,   279,   198, 9}, //  LW          1
+  {   "LW", LW_BAND_TYPE,  AM,   100,   513,   198, 9}, //  LW          1
   {   "MW", MW_BAND_TYPE,  AM,   522,  1701,  1008, 9}, //  MW          2
-  {"BACON", LW_BAND_TYPE,  AM,   280,   470,   284, 5}, // Ham          3
+  {"BACON", LW_BAND_TYPE,  AM,   280,   470,   284, 1}, // Ham          3
   { "630M", SW_BAND_TYPE, LSB,   472,   479,   475, 1}, // Ham  630M    4
   { "160M", SW_BAND_TYPE, LSB,  1800,  1910,  1899, 1}, // Ham  160M    5
   { "120M", SW_BAND_TYPE,  AM,  2300,  2495,  2400, 5}, //      120M    6
@@ -545,8 +659,6 @@ FM_Preset preset[] = {
 
 //======================================================= END FM Presets     ======================================
 
-
-
 const int lastButton = (sizeof bt / sizeof(Button)) - 1;
 const int lastBand   = (sizeof band / sizeof(Band)) - 1;
 const int lastHam = (sizeof bn / sizeof(Bandnumber)) - 1;
@@ -557,6 +669,38 @@ const int lastStep = (sizeof sp / sizeof(Step)) - 1;
 const int lastKPath = (sizeof kp / sizeof(Keypath)) - 1;
 const int lastPreset = (sizeof preset / sizeof (FM_Preset)) - 1;
 
+#define offsetEEPROM       0x30
+#define EEPROM_SIZE        150
+
+struct StoreStruct {
+  byte     chkDigit;
+  byte     bandIdx; 
+  uint16_t Freq; 
+  uint8_t  currentMode;
+  uint8_t  bwIdxSSB;
+  uint8_t  bwIdxAM;
+  uint8_t  currentStep;
+  int      currentBFO;
+  uint8_t  currentAGCAtt;
+  uint8_t  currentVOL;
+  uint8_t  currentBFOStep;
+  uint8_t  RDS;
+};
+
+StoreStruct storage = {
+  '@',  //First time check
+    0,  //bandIdx 
+ 8930,  //Freq
+    0,  //mode
+    1,  //bwIdxSSB
+    3,  //bwIdxAM
+    9,  //currentStep
+ -125,  //currentBFO  
+    2,  //currentAGCAtt
+   45,  //currentVOL 
+   25,  //currentBFOStep
+    1   //RDS
+};
 
 uint8_t rssi = 0;
 uint8_t stereo = 1;
@@ -569,185 +713,88 @@ TFT_eSPI tft = TFT_eSPI();
 
 SI4735 si4735;
 
-
-void FreqDispl()
-{  
-  if ((FirstLayer) or (ThirdLayer)) { 
-    currentFrequency = si4735.getFrequency();  
-    tft.setTextSize(4);
-    tft.setTextColor(TFT_YELLOW, TFT_BLACK);
-    tft.setTextDatum(BC_DATUM);
-    tft.setTextPadding(0);
-
-    tft.fillRect( XFreqDispl + 6, YFreqDispl + 28 , 228, 32, TFT_BLACK); // Black freq. field
-    if (VOLbut) {
-      tft.setTextSize(4);
-      tft.drawString(String(map(currentVOL, 20, 63, 0, 100)) + " %", XFreqDispl + 120, YFreqDispl + 61);
-    } else {
-      if (band[bandIdx].bandType == MW_BAND_TYPE || band[bandIdx].bandType == LW_BAND_TYPE) {
-
-        if (bfoOn) {
-          tft.setTextSize(4);
-          tft.drawString(String(currentBFO), XFreqDispl + 120, YFreqDispl + 61);
-        } else {
-          Displayfreq =  currentFrequency;
-          tft.setTextSize(4);
-          tft.drawString(String(Displayfreq, 0), XFreqDispl + 120, YFreqDispl + 61);
-          tft.setTextSize(2);
-          tft.drawString("KHz", XFreqDispl + 215, YFreqDispl + 61);
-        }
+//=======================================================================================
+void IRAM_ATTR RotaryEncFreq()
+//=======================================================================================
+{ 
+  // rotary encoder events
+  if (!writingEeprom){
+    encoderStatus = encoder.process();
+    
+    if (encoderStatus)
+    {
+      if (encoderStatus == DIR_CW)// Direction clockwise
+      {
+        encoderCount = 1;
       }
-      if (band[bandIdx].bandType == FM_BAND_TYPE) {
-        Displayfreq =  currentFrequency / 100;
-
-        tft.setTextSize(4);
-
-        tft.drawString(String(Displayfreq, 1), XFreqDispl + 120, YFreqDispl + 61);
-
-        tft.setTextSize(2);
-        tft.drawString("MHz", XFreqDispl + 215, YFreqDispl + 61);
-      }
-      if (band[bandIdx].bandType == SW_BAND_TYPE) {
-        if (bfoOn) {
-          tft.setTextSize(4);
-          tft.drawString(String(currentBFO), XFreqDispl + 120, YFreqDispl + 61);
-        }
-        else {
-          Displayfreq =  currentFrequency / 1000;
-          tft.setTextSize(4);
-          tft.drawString(String(Displayfreq, 3), XFreqDispl + 120, YFreqDispl + 61);
-          tft.setTextSize(2);
-          tft.drawString("MHz", XFreqDispl + 215, YFreqDispl + 61);
-        }
+      else
+      {
+        encoderCount = -1;
       }
     }
   }
 }
 
-void SeekFreq (uint16_t freq)  {
-  if ((FirstLayer)or(ThirdLayer))  {
-    currentFrequency = freq;
-    tft.setTextSize(4);
-    tft.setTextColor(TFT_YELLOW, TFT_BLACK);
-    tft.setTextDatum(BC_DATUM);
-    tft.setTextPadding(0);
-    tft.fillRect( XFreqDispl + 6, YFreqDispl +28 , 228, 32, TFT_BLACK);// Black freq. field
-    if (band[bandIdx].bandType == MW_BAND_TYPE || band[bandIdx].bandType == LW_BAND_TYPE) {
-        Displayfreq =  currentFrequency;
-        tft.setTextSize(4);
-        tft.drawString(String(Displayfreq,0), XFreqDispl +120,YFreqDispl +61);
-        tft.setTextSize(2);
-        tft.drawString("KHz", XFreqDispl +215,YFreqDispl +61);
-      }
-    if (band[bandIdx].bandType == FM_BAND_TYPE){
-      Displayfreq =  currentFrequency/100;
-      tft.setTextSize(4);
-      tft.drawString(String(Displayfreq,1), XFreqDispl +120,YFreqDispl +61);
-      tft.setTextSize(2);
-      tft.drawString("MHz", XFreqDispl +215,YFreqDispl +61);
-    } 
-    if (band[bandIdx].bandType == SW_BAND_TYPE){
-        Displayfreq =  currentFrequency/1000;
-        tft.setTextSize(4);
-        tft.drawString(String(Displayfreq,3), XFreqDispl +120,YFreqDispl +61);
-        tft.setTextSize(2);
-        tft.drawString("MHz", XFreqDispl +215,YFreqDispl +61);
-      }
-     }    
-   }
-
-
-
-
-
-void DrawDispl()
-{
-  tft.fillRect(XFreqDispl, YFreqDispl, 240, 90, TFT_WHITE);
-  tft.fillRect(XFreqDispl + 5, YFreqDispl + 5, 230, 80, TFT_BLACK);
-  tft.setTextSize(1);
-  tft.setTextColor(TFT_GREEN, TFT_BLACK);
-  tft.setTextDatum(BC_DATUM);
-  tft.drawString(band[bandIdx].bandName, XFreqDispl + 160, YFreqDispl + 20);
-  FreqDispl();
-  if (band[bandIdx].bandType != FM_BAND_TYPE) {
-    tft.setTextSize(1);
-    tft.setTextColor(TFT_GREEN, TFT_BLACK);
-    tft.setTextDatum(BC_DATUM);
-    tft.drawString("BFO", XFreqDispl + 20, YFreqDispl + 16);
-    tft.drawString("AGC", XFreqDispl + 50, YFreqDispl + 16);
-    tft.setTextPadding(tft.textWidth(" -88"));
-
-    if (bfoOn) {
-      tft.setTextColor(TFT_GREEN, TFT_BLACK);
-      tft.drawString(String(currentBFOStep), XFreqDispl + 20, YFreqDispl + 26);
-      tft.setTextColor(TFT_GREEN, TFT_BLACK);
-    } else {
-      tft.setTextColor(TFT_GREEN, TFT_BLACK);
-      tft.drawString("   ", XFreqDispl + 20, YFreqDispl + 26);
-    }
-
-    si4735.getAutomaticGainControl();
-    if (si4735.isAgcEnabled()) {
-      tft.setTextColor(TFT_RED, TFT_BLACK);
-      tft.drawString("On", XFreqDispl + 50, YFreqDispl + 26);
-      tft.setTextColor(TFT_ORANGE, TFT_BLACK);
-    } else {
-      tft.drawString("Off", XFreqDispl + 50, YFreqDispl + 26);
-    }
-    tft.setTextColor(TFT_GREEN, TFT_BLACK);
-    tft.drawString(bandModeDesc[currentMode], XFreqDispl + 80, YFreqDispl + 20);
-    tft.setTextPadding(tft.textWidth("2.2kHz"));
-    if (currentMode == AM) BWtext = bandwidthAM[bwIdxAM];
-    else BWtext = bandwidthSSB[bwIdxSSB];
-    tft.drawString(BWtext + "KHz", XFreqDispl + 120, YFreqDispl + 20);
-    tft.drawString(String(band[bandIdx].currentStep) + "KHz", XFreqDispl + 200, YFreqDispl + 20);
-  }
-}
 
 //=======================================================================================
 void setup() {
 //=======================================================================================
   Serial.begin(115200);
-  Serial.println("     SI4735 Radio");
-  Serial.println("Version 2.0   29-04-2020");
   pinMode(Display_Led, OUTPUT);
   pinMode(BEEPER, OUTPUT);
   digitalWrite(Display_Led, displayon);
   DISplay = true;
+
   Beep(1, 200);
 
   tft.init();
-  tft.setRotation(2);
+  #ifdef IhaveVertTFT
+    tft.setRotation(2);
+  #endif
+
+  #ifdef IhaveHoriTFT
+    tft.setRotation(1);
+  #endif
+  
   //tft.setRotation(0); // Rotate 0
   //tft.setRotation(1); // Rotate 90
   //tft.setRotation(2); // Rotate 180
   //tft.setRotation(3); // Rotate 270
 
-  tft.fillScreen(TFT_BLACK);
-  tft.setCursor(7, 100);
-  tft.setTextSize(2);
-  tft.setTextColor(TFT_GREEN, TFT_BLACK);
-  tft.print("SI4735 Radio");
-  tft.setCursor(7, 120);
-  tft.print("ESP32");
-  delay(1000);
-  tft.setCursor(7, 130);
-  tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+  #ifdef IhaveVertTFT
+    // Calibration code for touchscreen : for 2.8 inch & Rotation = 2
+    uint16_t calData[5] = { 258, 3566, 413, 3512, 2 };
+    tft.setTouch(calData);
+  #endif
+  
+  #ifdef IhaveHoriTFT
+    // Calibration code for touchscreen : Rotation = 1
+    uint16_t calData[5] = { 387, 3530, 246, 3555, 7 };
+    tft.setTouch(calData);
+  #endif
 
-  // Calibration code for touchscreen : for 2.8 inch & Rotation = 2
-  uint16_t calData[5] = { 258, 3566, 413, 3512, 2 };
-  tft.setTouch(calData);
+  if (!EEPROM.begin(EEPROM_SIZE))
+  {
+    tft.fillScreen(TFT_BLACK);
+    tft.setCursor(0, 0);
+    tft.println(F("failed to initialise EEPROM"));
+    Serial.println(F("failed to initialise EEPROM"));
+    while(1); 
+  }
 
-  // Calibration code for touchscreen : Rotation = 0
-  //uint16_t calData[5] = { 310, 3518, 354, 3493, 4 };
-  //tft.setTouch(calData);
+  if (EEPROM.read(offsetEEPROM) != storage.chkDigit){
+    Serial.println(F("Writing defaults...."));
+    saveConfig();
+  }
+  loadConfig();
+  printConfig();
+  
 
   Wire.begin(ESP32_I2C_SDA, ESP32_I2C_SCL); //I2C for SI4735
 
   // Encoder pins
   pinMode(ENCODER_PIN_A , INPUT_PULLUP); //Rotary encoder Freqency/bfo/preset
   pinMode(ENCODER_PIN_B , INPUT_PULLUP);
-
   // Encoder interrupt
   attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_A), RotaryEncFreq, CHANGE);
   attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_B), RotaryEncFreq, CHANGE);
@@ -758,20 +805,30 @@ void setup() {
 
   tft.fillScreen(TFT_BLACK);
   delay(500);
-  tft.setCursor(7, 100);
+  tft.setCursor(7, 50);
   tft.setTextSize(2);
-  tft.setTextColor(TFT_GREEN, TFT_BLACK);
+  tft.setTextColor(TFT_YELLOW, TFT_BLACK);
 
+  Serial.println("     SI4735 Radio");
+  Serial.println("Version 2.3 26-05-2020");
+  tft.println("SI4735  Radio");
+  tft.setCursor(7, 70);
+  tft.println(" Version 2.3");
+  tft.setCursor(7, 95);
+  tft.println(" 26-05-2020");
+  tft.setCursor(7, 130);
+  delay(2000);
+  tft.setTextColor(TFT_GREEN, TFT_BLACK);
   if ( si4735Addr == 0 ) {
     tft.print("Si4735 not detected");
     Serial.println("Si4735 not detected");
     while (1);
   } else {
-    tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+    tft.setTextColor(TFT_GREEN, TFT_BLACK);
     tft.print("Si473X addr :  ");
     tft.println(si4735Addr, HEX);
   }
-  delay(500);
+  delay(1500);
 
   if (si4735Addr == 17)
   {
@@ -782,28 +839,107 @@ void setup() {
     si4735.setDeviceI2CAddress(1);
   }
 
-  si4735.setup(RESET_PIN, 0); // Start in FM
+  // Setup the radio from last setup in EEPROM
+ 
+  bandIdx                   = storage.bandIdx;
+  band[bandIdx].currentFreq = storage.Freq;
+  currentMode               = storage.currentMode;
+  bwIdxSSB                  = storage.bwIdxSSB;
+  bwIdxAM                   = storage.bwIdxAM;
+  currentStep               = storage.currentStep;
+  currentBFO                = storage.currentBFO;
+  currentAGCAtt             = storage.currentAGCAtt;
+  currentVOL                = storage.currentVOL;
+  currentBFOStep            = storage.currentBFOStep;
+  RDS                       = storage.RDS;
+ 
+  if (bandIdx == 0)  si4735.setup(RESET_PIN, 0); // Start in FM
+  else si4735.setup(RESET_PIN, 1); // Start in AM
 
-  // Set up the radio for the start band (see index table variable bandIdx )
-  si4735.setVolume(volume);
-  bandIdx = 0; // FM
-  currentMode = FM;
+  if (bandIdx != 0) si4735.setAM();
+  previousBFO = 0;
+  si4735.setVolume(currentVOL);
+  previousVOL = currentVOL;
+ 
   BandSet();
+  if (currentStep != band[bandIdx].currentStep ) band[bandIdx].currentStep = currentStep;
   currentFrequency = previousFrequency = si4735.getFrequency();
   Beep(2, 200);
   encBut = 600;
   x = y = 0;
   DrawFila();
-  si4735.setSeekFmSpacing(10);         // all in setup
-  si4735.setSeekFmLimits(6500,10800);
+  si4735.setSeekFmSpacing(10);        
+  si4735.setSeekFmLimits(8750,10800);
   si4735.setSeekAmRssiThreshold(50);
   si4735.setSeekAmSrnThreshold(20);
   si4735.setSeekFmRssiThreshold(5);
   si4735.setSeekFmSrnThreshold(5);
-}// end setup
-//=========================================================================================================
-//*********************************************************************************************************
 
+  xTaskCreate(SaveInEeprom, "SaveInEeprom", 2048, NULL, 1, NULL); 
+
+}// end setup
+//=======================================================================================
+//=======================================================================================
+
+//=======================================================================================
+void SaveInEeprom (void* arg)
+//=======================================================================================
+{   
+  while(1) {     
+    storage.bandIdx = bandIdx;
+    storage.Freq =  band[bandIdx].currentFreq;
+    storage.currentMode = currentMode;
+    storage.bwIdxSSB = bwIdxSSB;
+    storage.bwIdxAM = bwIdxAM;
+    storage.currentStep = currentStep;
+    storage.currentBFO = currentBFO;
+    storage.currentAGCAtt = currentAGCAtt;
+    storage.currentVOL = currentVOL;
+    storage.currentBFOStep = currentBFOStep;
+    storage.RDS = RDS;
+    for (unsigned int t = 0; t < sizeof(storage); t++) {
+      delay(1);
+      if (EEPROM.read(offsetEEPROM + t) != *((char*)&storage + t)){
+        delay(1);
+        EEPROM.write(offsetEEPROM + t, *((char*)&storage + t));
+      } 
+    }  
+    writingEeprom = true;
+    EEPROM.commit();
+    writingEeprom = false;
+    vTaskDelay(5000 / portTICK_RATE_MS);
+  }
+}
+
+//=======================================================================================
+void saveConfig() {
+//=======================================================================================
+  delay(10);
+  for (unsigned int t = 0; t < sizeof(storage); t++) {
+    if (EEPROM.read(offsetEEPROM + t) != *((char*)&storage + t)){
+      EEPROM.write(offsetEEPROM + t, *((char*)&storage + t));
+    } 
+  }  
+  EEPROM.commit();
+}
+
+void loadConfig() {
+  if (EEPROM.read(offsetEEPROM + 0) == storage.chkDigit) {
+    for (unsigned int t = 0; t < sizeof(storage); t++)
+      *((char*)&storage + t) = EEPROM.read(offsetEEPROM + t);
+    Serial.println("Load config done");  
+  }    
+}
+
+void printConfig() {
+  Serial.println(sizeof(storage));
+  if (EEPROM.read(offsetEEPROM) == storage.chkDigit){
+    for (unsigned int t = 0; t < sizeof(storage); t++)
+      Serial.write(EEPROM.read(offsetEEPROM + t)); 
+    Serial.println();
+    //setSettings(0);
+  }
+}
 
 //=======================================================================================
 void BandSet()
@@ -816,6 +952,7 @@ void BandSet()
   {
     if (ssbLoaded == false) {
       loadSSB();
+      si4735.setSSBBfo(currentBFO);
     }
   }
   useBand();
@@ -849,14 +986,17 @@ void useBand()
     {
       si4735.setSSB(band[bandIdx].minimumFreq, band[bandIdx].maximumFreq, band[bandIdx].currentFreq, band[bandIdx].currentStep, currentMode);
       si4735.setSSBAutomaticVolumeControl(1);
-      si4735.setSsbSoftMuteMaxAttenuation(0); // Disable Soft Mute for SSB
+      //si4735.setSsbSoftMuteMaxAttenuation(0); // Disable Soft Mute for SSB    
+      //si4735.setSSBDspAfc(0);
+      //si4735.setSSBAvcDivider(3);
+      //si4735.setSsbSoftMuteMaxAttenuation(8); // Disable Soft Mute for SSB
       //si4735.setSBBSidebandCutoffFilter(0);
     }
     else
     {
       si4735.setAM(band[bandIdx].minimumFreq, band[bandIdx].maximumFreq, band[bandIdx].currentFreq, band[bandIdx].currentStep);
       //si4735.setAutomaticGainControl(1, 0);
-      si4735.setAmSoftMuteMaxAttenuation(0); // // Disable Soft Mute for AM
+      //si4735.setAmSoftMuteMaxAttenuation(0); // // Disable Soft Mute for AM
       bfoOn = false;
     }
 
@@ -948,15 +1088,16 @@ void VolumeIndicator(int vol) {
   tft.fillRect(XVolInd + 17 + vol, YVolInd + 16 , 212 - (2 + vol), 6, TFT_GREEN);
 }
 
+
 //=======================================================================================
 void loop() {
 //=======================================================================================
   unsigned long now = millis();
-
+  //noInterrupts();
   if ((FirstLayer == true) or (ThirdLayer == true)) VolumeIndicator(si4735.getVolume());
 
   // Pressed will be set true is there is a valid touch on the screen
-  while ((pressed == false) and (encoderCount == 0) and (encBut > 500) ) {  // wait loop
+  while (((pressed == false) and (encoderCount == 0) and (encBut > 500)) or (writingEeprom)) {  // wait loop  
     pressed = tft.getTouch(&x, &y);
     encBut = analogRead(ENCODER_SWITCH);
     showtimeRSSI();
@@ -999,6 +1140,11 @@ void loop() {
             drawMUTE();
           }
 
+           if ((bfoOn == true) and (n == VOL)) {
+            bfoOn = false;
+            drawBFO();
+          } 
+
 
           if (n == HAM) {
             delay(400);  //HamBand button
@@ -1035,9 +1181,11 @@ void loop() {
 
           if (n == AGC) {           //============================//AGC switch
             si4735.getAutomaticGainControl();
+            AGCgain = 0;
             if  (si4735.isAgcEnabled()) {
               si4735.setAutomaticGainControl(1, 0);     //    disabled
             } else {
+              AGCgainbut = false;
               si4735.setAutomaticGainControl(0, 0);      //   enabled
             }
             drawAGC();
@@ -1115,10 +1263,6 @@ void loop() {
             FreqDispl();
             drawVOL();
           }
-
-
-
-
 
           if (n == MUTE) {
             delay(200);
@@ -1210,6 +1354,7 @@ void loop() {
             delay(400);
             BroadBand = false;
             bandIdx = bb[n].BbandNum;
+            if ((bandIdx == 0) and (currentAGCgain >=28)) currentAGCgain = previousAGCgain = 26; // currentAGCgain in FM max. 26
             si4735.setAM();
             delay(50);
             currentMode = band[bandIdx].prefmod;
@@ -1347,15 +1492,15 @@ void loop() {
           y = 0;
 
           if (n == SEEKUP) {
-          delay(200);
-          x = 0;
-          y = 0;
-          SEEK = true;
-          //si4735.setSeekFmSpacing(10);         // all in setup
-          //si4735.setSeekFmLimits(6500,10800);
-          //si4735.setSeekAmRssiThreshold(50);
-          //si4735.setSeekFmRssiThreshold(5);
-          //si4735.setSeekFmSrnThreshold(5);
+            delay(200);
+            x = 0;
+            y = 0;
+            SEEK = true;
+            //si4735.setSeekFmSpacing(10);         // all in setup
+            //si4735.setSeekFmLimits(6500,10800);
+            //si4735.setSeekAmRssiThreshold(50);
+            //si4735.setSeekFmRssiThreshold(5);
+            //si4735.setSeekFmSrnThreshold(5);
             if ((currentMode != LSB) and (currentMode != USB))   {
               if (currentMode != FM) {     // No FM
                 if (band[bandIdx].bandType == MW_BAND_TYPE || band[bandIdx].bandType == LW_BAND_TYPE) {
@@ -1382,27 +1527,27 @@ void loop() {
           }
 
          if (n == SEEKDN) {
-             delay(200);
-          x = 0;
-          y = 0;
-          SEEK = true;
-          //si4735.setSeekFmSpacing(10);         // all in setup
-          //si4735.setSeekFmLimits(6500,10800);
-          //si4735.setSeekAmRssiThreshold(50);
-          //si4735.setSeekFmRssiThreshold(50);
-          //si4735.setSeekAmSrnThreshold(20);
-          //si4735.setSeekFmSrnThreshold(20);
-          if ((currentMode != LSB) and (currentMode != USB))   {
-          if (currentMode != FM) {     // No FM
-            if (band[bandIdx].bandType == MW_BAND_TYPE || band[bandIdx].bandType == LW_BAND_TYPE) {
-              si4735.setSeekAmSpacing(band[bandIdx].currentStep);     //9 KHz
-              si4735.setSeekAmLimits(band[bandIdx].minimumFreq, band[bandIdx].maximumFreq);
-            } else {
-              bandIdx = 29;// all sw
-              si4735.setSeekAmSpacing(band[bandIdx].currentStep);     // 5 KHz
-              si4735.setSeekAmLimits(band[bandIdx].minimumFreq, band[bandIdx].maximumFreq);  
-            }
-          }
+           delay(200);
+           x = 0;
+           y = 0;
+           SEEK = true;
+           //si4735.setSeekFmSpacing(10);         // all in setup
+           //si4735.setSeekFmLimits(6500,10800);
+           //si4735.setSeekAmRssiThreshold(50);
+           //si4735.setSeekFmRssiThreshold(50);
+           //si4735.setSeekAmSrnThreshold(20);
+           //si4735.setSeekFmSrnThreshold(20);
+           if ((currentMode != LSB) and (currentMode != USB))   {
+             if (currentMode != FM) {     // No FM
+               if (band[bandIdx].bandType == MW_BAND_TYPE || band[bandIdx].bandType == LW_BAND_TYPE) {
+                 si4735.setSeekAmSpacing(band[bandIdx].currentStep);     //9 KHz
+                 si4735.setSeekAmLimits(band[bandIdx].minimumFreq, band[bandIdx].maximumFreq);
+               } else {
+                 bandIdx = 29;// all sw
+                 si4735.setSeekAmSpacing(band[bandIdx].currentStep);     // 5 KHz
+                 si4735.setSeekAmLimits(band[bandIdx].minimumFreq, band[bandIdx].maximumFreq);  
+               }
+           }
         
           si4735.seekStationProgress(SeekFreq,0);
           delay(300);
@@ -1417,8 +1562,6 @@ void loop() {
           SEEK = false;
         }
 
-
-
           if (n == STATUS) {
             delay(200);
             x = 0;
@@ -1431,12 +1574,39 @@ void loop() {
             delay(200);
             x = 0;
             y = 0;
+            if (AGCgainbut) AGCgainbut = false;
             FirstLayer  = true;
             SecondLayer = false;
             ThirdLayer  = false;
             ForthLayer  = false;
             DrawFila();
           }
+
+          if (n == RDSbut) {
+            delay(200);
+            x = 0;
+            y = 0;
+            if (RDS) RDS = false;
+            else RDS = true;
+            //DrawRDSbut();
+            //DrawThla();
+            DrawButThla(); 
+          }
+
+          if (n == AGCset) {
+            delay(200);
+            x = 0;
+            y = 0;
+             if (AGCgainbut) AGCgainbut = false;
+             else {
+               bfoOn = false; // only AGC function at the rotory encoder
+               AGCgainbut = true;
+               si4735.getAutomaticGainControl();
+               previousAGCgain = 37; // force to setup AGC gain
+             }  
+             FreqDispl();
+             DrawThla();  
+          }  
         }
       }
     } // end ThirdLayer
@@ -1479,6 +1649,7 @@ void loop() {
     tft.drawString(String(preset[currentPRES].PresetName), 175, 51);
     bandIdx = 0;
     si4735.setFrequency((preset[currentPRES].presetIdx));
+    band[bandIdx].currentFreq = si4735.getFrequency();
   }
 
   if (currentVOL != previousVOL)
@@ -1499,9 +1670,36 @@ void loop() {
     FreqDispl();
   }
 
+  if (currentAGCgain != previousAGCgain)
+  {
+    AGCgain = 1;
+    //currentAGCgain = currentAGCgain + (currentAGCgain - previousAGCgain);
+    tft.setCursor(0, 20);
+    if (si4735.isCurrentTuneFM())  MaxAGCgain = MaxAGCgainFM;
+    else MaxAGCgain = MaxAGCgainAM;
+
+    if (currentAGCgain > MaxAGCgain) currentAGCgain = MaxAGCgain;
+    if (currentAGCgain < MinAGCgain) currentAGCgain = MinAGCgain;
+
+    previousAGCgain = currentAGCgain;
+    si4735.setAutomaticGainControl(1,currentAGCgain);
+    //DrawDispl();
+    tft.fillRect(6, 28 , 228, 32, TFT_BLACK);
+    tft.setTextColor(TFT_YELLOW, TFT_BLACK );
+    tft.setTextSize(2);
+    tft.setTextDatum(BC_DATUM);
+    //FreqDispl();
+    DrawDispl();
+    DrawAGCgainbut();
+  }
+
+  
+  
 //=======================================================================================
 }// end loop
 //=======================================================================================
+
+
 
 
 //=======================================================================================
@@ -1540,10 +1738,11 @@ void DisplayRDS()
     if ( currentMode == FM) {
       if ( currentFrequency != previousFrequency ) {
         previousFrequency = currentFrequency;
-        tft.fillRect(XFreqDispl + 60, YFreqDispl + 60, 140, 20, TFT_BLACK);
+        tft.fillRect(XFreqDispl + 60, YFreqDispl + 60, 140, 20, TFT_BLACK);  // clear RDS text
       }
-
-      if ((RDS) and  (NewSNR >= 20)) checkRDS();
+      if ((RDS) and  (NewSNR >= 12)) checkRDS();
+      //if (RDS) checkRDS();
+      else  tft.fillRect(XFreqDispl + 60, YFreqDispl + 60, 140, 20, TFT_BLACK); // clear RDS text
     }
     elapsedRDS = millis();
   }
@@ -1576,8 +1775,9 @@ void showRSSI() {
     tft.setTextSize(1);
     tft.setTextDatum(BC_DATUM);
     tft.setTextPadding(0);
-    tft.fillRect(XFreqDispl + 30, YFreqDispl + 10 , 50, 12, TFT_BLACK); // STEREO MONO
-    tft.drawString(buffer, XFreqDispl + 50, YFreqDispl + 20);
+    tft.fillRect(XFreqDispl + 180, YFreqDispl + 10 , 50, 12, TFT_BLACK); // STEREO MONO
+    //tft.drawString(buffer, XFreqDispl + 50, YFreqDispl + 20);
+    tft.drawString(buffer, XFreqDispl + 200, YFreqDispl + 20);
   }
   rssi = map(NewRSSI, 0, 95, 0, 212);
   if ((FirstLayer) or (ThirdLayer)) Smeter();
@@ -1594,11 +1794,13 @@ void showRSSI() {
   VOLbutoff();
 }
 
-
+//=======================================================================================
 void encoderCheck()
+//=======================================================================================
 {
   if (encoderCount != 0)
   {
+   
     if (DISplay == false) { //  Wake-up  Display
       DisplayOnTime = millis();
       digitalWrite(Display_Led, displayon);
@@ -1620,6 +1822,12 @@ void encoderCheck()
       mainpurp = 0;
     }
 
+    if (AGCgainbut) {     // AGC gain control
+      currentAGCgain = (encoderCount == 1) ? (currentAGCgain + currentAGCgainStep) : (currentAGCgain - currentAGCgainStep);
+      mainpurp = 0;
+    }
+    
+    
     if (mainpurp == 1)
     {
       if (encoderCount == 1) {
@@ -1634,7 +1842,9 @@ void encoderCheck()
   }
 }
 
+//=======================================================================================
 void encoderButtonCheck()
+//=======================================================================================
 {
   //Encoder button
   encBut = analogRead(ENCODER_SWITCH);
@@ -1666,8 +1876,9 @@ void encoderButtonCheck()
   }
 }
 
-
+//=======================================================================================
 void setStep()
+//=======================================================================================
 {
   // This command should work only for SSB mode
   if (bfoOn && (currentMode == LSB || currentMode == USB))
@@ -1683,8 +1894,9 @@ void setStep()
   DrawDispl();
 }
 
-
+//=======================================================================================
 void Beep(int cnt, int tlb) {
+//=======================================================================================
   int tla = 100;
   for (int i = 0; i < cnt; i++) {
     digitalWrite(BEEPER, beepOn);
@@ -1694,8 +1906,9 @@ void Beep(int cnt, int tlb) {
   }
 }
 
-
+//=======================================================================================
 void DrawFila()// Draw of first layer
+//=======================================================================================
 {
   FirstLayer = true;
   SecondLayer = false;
@@ -1706,7 +1919,9 @@ void DrawFila()// Draw of first layer
   DrawVolumeIndicator();
 }
 
+//=======================================================================================
 void DrawThla()// Draw of Third layer
+//=======================================================================================
 {
   ThirdLayer = true;
   ForthLayer = false;
@@ -1715,11 +1930,14 @@ void DrawThla()// Draw of Third layer
   DrawDispl();
   DrawSmeter();
   DrawVolumeIndicator();
+  DrawRDSbut();
+  DrawAGCgainbut();
 }
 
-
+//=======================================================================================
 void DrawButFila() { // Buttons first layer
-  tft.fillScreen(TFT_BLACK);
+//=======================================================================================
+  //tft.fillScreen(TFT_BLACK);
   for (int n = 0 ; n <= lastButton; n++) {
     tft.fillRect(bt[bt[n].ButtonNum].XButos + Xbutst, bt[bt[n].ButtonNum].YButos + Ybutst , Xbutsiz , Ybutsiz, TFT_WHITE);
     tft.fillRect((bt[bt[n].ButtonNum].XButos + Xbutst + 3) , (bt[bt[n].ButtonNum].YButos + Ybutst + 3), (Xbutsiz - 6) , (Ybutsiz - 6), TFT_BLUE);
@@ -1728,14 +1946,15 @@ void DrawButFila() { // Buttons first layer
     tft.setTextDatum(BC_DATUM);
     tft.setTextPadding(0);
     tft.drawString((bt[n].ButtonNam), ( bt[bt[n].ButtonNum].XButos + Xbutst + (Xbutsiz / 2) ), (bt[bt[n].ButtonNum].YButos + Ybutst  + ((Ybutsiz) / 2 + 9)  ));
-    //tft.drawCentreString((bt[n].ButtonNam),( bt[bt[n].ButtonNum].XButos + Xbutst +(Xbutsiz/2) ),(bt[bt[n].ButtonNum].YButos+Ybutst  + ((Ybutsiz)/2+9)  ),1);
   }
   drawBFO();
   drawAGC();
 }
 
+//=======================================================================================
 void DrawButThla() { // Buttons Third layer
-  tft.fillScreen(TFT_BLACK);
+//=======================================================================================
+  //tft.fillScreen(TFT_BLACK);
   for (int n = 0 ; n <= lastButton; n++) {
     tft.fillRect(bt[bt[n].ButtonNum1].XButos + Xbutst, bt[bt[n].ButtonNum1].YButos + Ybutst , Xbutsiz , Ybutsiz, TFT_WHITE);
     tft.fillRect((bt[bt[n].ButtonNum1].XButos + Xbutst + 3) , (bt[bt[n].ButtonNum1].YButos + Ybutst + 3), (Xbutsiz - 6) , (Ybutsiz - 6), TFT_BLUE);
@@ -1746,11 +1965,13 @@ void DrawButThla() { // Buttons Third layer
     tft.drawString((bt[n].ButtonNam1), ( bt[bt[n].ButtonNum1].XButos + Xbutst + (Xbutsiz / 2) ), (bt[bt[n].ButtonNum1].YButos + Ybutst  + ((Ybutsiz) / 2 + 9)  ));
     //tft.drawCentreString((bt[n].ButtonNam),( bt[bt[n].ButtonNum].XButos + Xbutst +(Xbutsiz/2) ),(bt[bt[n].ButtonNum].YButos+Ybutst  + ((Ybutsiz)/2+9)  ),1);
   }
+  DrawRDSbut();
 }
 
 
-
+//=======================================================================================
 void DrawVolumeIndicator()
+//=======================================================================================
 {
   tft.setTextSize(1);
   tft.fillRect(XVolInd, YVolInd, 240, 30, TFT_WHITE);
@@ -1764,8 +1985,9 @@ void DrawVolumeIndicator()
   tft.print("100%");
 }
 
-
+//=======================================================================================
 void DrawSmeter()
+//=======================================================================================
 {
   String IStr;
   tft.setTextSize(1);
@@ -1791,7 +2013,9 @@ void DrawSmeter()
   // end Smeter
 }
 
+//=======================================================================================
 void drawVOL()
+//=======================================================================================
 {
   int VOLbutcol;
   if (VOLbut) {
@@ -1808,9 +2032,61 @@ void drawVOL()
   tft.drawString((bt[5].ButtonNam), ( bt[bt[5].ButtonNum].XButos + Xbutst + (Xbutsiz / 2)), (bt[bt[5].ButtonNum].YButos + Ybutst  + (Ybutsiz / 2 + 9)));
 }
 
+//=======================================================================================
+void DrawAGCgainbut()
+//=======================================================================================
+{
+if (ThirdLayer)  {  
+  int AGCgainbutcol;
+  if (AGCgainbut) {
+    AGCgainbutcol = TFT_RED;
+    tft.setTextColor(TFT_YELLOW,TFT_RED );
+    AGCgainbuttext = currentAGCgain;
+  }else { 
+    AGCgainbutcol = TFT_BLUE;
+    tft.setTextColor(TFT_YELLOW,TFT_BLUE );
+    AGCgainbuttext = currentAGCgain;
+  }
+  tft.fillRect(bt[bt[4].ButtonNum1].XButos + Xbutst, bt[bt[4].ButtonNum1].YButos + Ybutst , Xbutsiz , Ybutsiz, TFT_WHITE);
+  tft.fillRect((bt[bt[4].ButtonNum1].XButos + Xbutst + 3) , (bt[bt[4].ButtonNum1].YButos + Ybutst + 3), (Xbutsiz - 6) , Ybutsiz - 6, AGCgainbutcol);
+  tft.setTextColor(TFT_YELLOW, AGCgainbutcol);
+  tft.setTextSize(2);
+  tft.setTextDatum(BC_DATUM);
+  tft.setTextPadding(0);
+  tft.drawString("AGCatt", ( bt[bt[4].ButtonNum1].XButos + Xbutst + (Xbutsiz / 2)), (bt[bt[4].ButtonNum1].YButos + Ybutst  + (Ybutsiz / 2+1)));
+  tft.drawString(AGCgainbuttext,( bt[bt[4].ButtonNum1].XButos + Xbutst + (Xbutsiz/2)),(bt[bt[4].ButtonNum1].YButos+Ybutst  + (Ybutsiz/2+16)));
+ }
+}
 
 
+//=======================================================================================
+void DrawRDSbut()
+//=======================================================================================
+{
+  int RDSbutcol;
+  if (RDS) {
+    RDSbutcol = TFT_DARKGREEN;
+    tft.setTextColor(TFT_YELLOW,TFT_DARKGREEN );
+    RDSbuttext = "on";
+  }else{ 
+    RDSbutcol = TFT_BLUE;
+    tft.setTextColor(TFT_YELLOW,TFT_BLUE );
+    RDSbuttext = "off";
+  }
+  tft.fillRect(bt[bt[3].ButtonNum1].XButos + Xbutst, bt[bt[3].ButtonNum1].YButos + Ybutst , Xbutsiz , Ybutsiz, TFT_WHITE);
+  tft.fillRect((bt[bt[3].ButtonNum1].XButos + Xbutst + 3) , (bt[bt[3].ButtonNum1].YButos + Ybutst + 3), (Xbutsiz - 6) , Ybutsiz - 6, RDSbutcol);
+  tft.setTextColor(TFT_YELLOW, RDSbutcol);
+  tft.setTextSize(2);
+  tft.setTextDatum(BC_DATUM);
+  tft.setTextPadding(0);
+  tft.drawString("RDS", ( bt[bt[3].ButtonNum1].XButos + Xbutst + (Xbutsiz / 2)), (bt[bt[3].ButtonNum1].YButos + Ybutst  + (Ybutsiz / 2+1)));
+  tft.drawString(RDSbuttext,( bt[bt[3].ButtonNum1].XButos + Xbutst + (Xbutsiz/2)),(bt[bt[3].ButtonNum1].YButos+Ybutst  + (Ybutsiz/2+16)));
+}
+
+
+//=======================================================================================
 void drawMUTE()
+//=======================================================================================
 {
   int MUTEbutcol;
   if (Mutestat) {
@@ -1829,8 +2105,9 @@ void drawMUTE()
   tft.drawString((bt[4].ButtonNam), ( bt[bt[4].ButtonNum].XButos + Xbutst + (Xbutsiz / 2)), (bt[bt[4].ButtonNum].YButos + Ybutst  + (Ybutsiz / 2 + 9)));
 }
 
-
+//=======================================================================================
 void drawAGC()
+//=======================================================================================
 {
   int AGCbutcol;
   si4735.getAutomaticGainControl();
@@ -1848,7 +2125,9 @@ void drawAGC()
   tft.drawString((bt[3].ButtonNam), ( bt[bt[3].ButtonNum].XButos + Xbutst + (Xbutsiz / 2)), (bt[bt[3].ButtonNum].YButos + Ybutst  + (Ybutsiz / 2 + 9)));
 }
 
+//=======================================================================================
 void drawBFO ()
+//=======================================================================================
 {
   int BFObutcol;
   if (bfoOn) BFObutcol = TFT_RED;
@@ -1862,7 +2141,9 @@ void drawBFO ()
   tft.drawString((bt[1].ButtonNam), ( bt[bt[1].ButtonNum].XButos + Xbutst + (Xbutsiz / 2)), (bt[bt[1].ButtonNum].YButos + Ybutst  + (Ybutsiz / 2 + 9)));
 }
 
+//=======================================================================================
 void drawKeyPath() {
+//=======================================================================================
   int Sendbutcol;
   tft.fillScreen(TFT_BLACK);
   for (int n = 0 ; n <= lastKPath; n++) {
@@ -1877,26 +2158,20 @@ void drawKeyPath() {
     tft.setTextSize(2);
     tft.setTextDatum(BC_DATUM);
     tft.setTextPadding(0);
-    tft.drawString((Keypathtext[kp[n].KeypNum]), ( kp[n].Xkeypos + kp[n].Xkeypnr + 30), (kp[n].Ykeypos + kp[n].Ykeypnr  + 37));
-  }
-}
-
-void MISClist() {
-  tft.fillScreen(TFT_BLACK);
-  tft.setTextColor(TFT_YELLOW, TFT_BLUE);
-  tft.setTextSize(2);
-  tft.setTextDatum(BC_DATUM);
-  tft.setTextPadding(0);
-
-  for (int n = 0 ; n <= 5; n++) {
-    tft.fillRect((bn[n].Xbandos + bn[n].Xbandnr) , (bn[n].Ybandos) + (bn[n].Ybandnr), (bn[n].Xbandsr + 20) , (bn[n].Ybandsr), TFT_WHITE);
-    tft.fillRect((bn[n].Xbandos + bn[n].Xbandnr + 3) , (bn[n].Ybandos) + (bn[n].Ybandnr + 3), (bn[n].Xbandsr - 6 + 20) , (bn[n].Ybandsr - 6), TFT_BLUE);
-    tft.drawString((misctext[kp[n].KeypNum]), (bn[n].Xbandos + bn[n].Xbandnr) + 65, (bn[n].Ybandos) + (bn[n].Ybandnr) + 25);
+    #ifdef IhaveHoriTFT
+      tft.drawString((Keypathtext[kp[n].KeypNum]), ( kp[n].Xkeypos + kp[n].Xkeypnr + 25), (kp[n].Ykeypos + kp[n].Ykeypnr  + 37));
+    #endif
+    #ifdef IhaveVertTFT
+      tft.drawString((Keypathtext[kp[n].KeypNum]), ( kp[n].Xkeypos + kp[n].Xkeypnr + 30), (kp[n].Ykeypos + kp[n].Ykeypnr  + 37));
+    #endif
   }
 }
 
 
+
+//=======================================================================================
 void HamBandlist() {
+//=======================================================================================
   tft.fillScreen(TFT_BLACK);
   tft.setTextColor(TFT_BLACK, TFT_WHITE);
   tft.setTextSize(2);
@@ -1910,7 +2185,9 @@ void HamBandlist() {
   }
 }
 
+//=======================================================================================
 void BroadBandlist() {
+//=======================================================================================  
   tft.fillScreen(TFT_BLACK);
   tft.setTextColor(TFT_BLACK, TFT_WHITE);
   tft.setTextSize(2);
@@ -1919,11 +2196,13 @@ void BroadBandlist() {
   for (int n = 0 ; n <= lastBroad; n++) {
     tft.fillRect((bb[n].Xbbandos + bb[n].Xbbandnr) , (bb[n].Ybbandos) + (bb[n].Ybbandnr), (bb[n].Xbbandsr) , (bb[n].Ybbandsr), TFT_RED);
     tft.fillRect((bb[n].Xbbandos + bb[n].Xbbandnr + 3) , (bb[n].Ybbandos) + (bb[n].Ybbandnr + 3), (bb[n].Xbbandsr - 6) , (bb[n].Ybbandsr - 6), TFT_WHITE);
-    tft.drawString(band[bb[n].BbandNum].bandName, (bb[n].Xbbandos + bb[n].Xbbandnr) + 55, (bb[n].Ybbandos) + (bb[n].Ybbandnr) + 25);
+    tft.drawString(band[bb[n].BbandNum].bandName, (bb[n].Xbbandos + bb[n].Xbbandnr) + 40, (bb[n].Ybbandos) + (bb[n].Ybbandnr) + 25);
   }
 }
 
+//=======================================================================================
 void Steplist() {
+//=======================================================================================
   tft.fillScreen(TFT_BLACK);
   tft.setTextColor(TFT_BLACK, TFT_WHITE);
   tft.setTextSize(2);
@@ -1936,7 +2215,9 @@ void Steplist() {
   }
 }
 
+//=======================================================================================
 void Modelist() {
+//=======================================================================================
   tft.fillScreen(TFT_BLACK);
   tft.setTextColor(TFT_BLACK, TFT_WHITE);
   tft.setTextSize(2);
@@ -1949,7 +2230,9 @@ void Modelist() {
   }
 }
 
+//=======================================================================================
 void BWList()
+//=======================================================================================
 {
   tft.fillScreen(TFT_BLACK);
   tft.setTextColor(TFT_BLACK, TFT_WHITE);
@@ -1965,84 +2248,69 @@ void BWList()
     else tft.drawString(bandwidthSSB[bw[n].BandWidthSSB], (bw[n].Xos) + 50, (bw[n].Yos) + (bw[n].Ynr) + 24);
   }
   tft.setTextColor(TFT_YELLOW, TFT_BLACK);
-  if ( currentMode == AM)  tft.drawString("AM modulation"  , XfBW + 50, YfBW - 30);
-  if ( currentMode == USB) tft.drawString("USB modulation" , XfBW + 50, YfBW - 30);
-  if ( currentMode == LSB) tft.drawString("LSB modulation" , XfBW + 50, YfBW - 30);
-  tft.drawString("Bandwidth in KHz" , XfBW + 50, YfBW - 10);
+  if ( currentMode == AM)  tft.drawString("AM Bandw. in KHz"  , XfBW + 50, YfBW - 30);
+  if ( currentMode == USB) tft.drawString("USB Bandw. in KHz" , XfBW + 50, YfBW - 30);
+  if ( currentMode == LSB) tft.drawString("LSB Bandw. in KHz" , XfBW + 50, YfBW - 30);
 }
 
-void RotaryEncFreq()
-{ // rotary encoder events
-  uint8_t encoderStatus = encoder.process();
-  if (encoderStatus)
-  {
-    if (encoderStatus == DIR_CW)
-    {
-      encoderCount = 1;
-    }
-    else
-    {
-      encoderCount = -1;
-    }
-  }
-}
-
+//=======================================================================================
 void subrstatus() {
+//=======================================================================================
   tft.fillScreen(TFT_BLACK);
-  tft.setTextSize(1);
-  tft.setCursor(0, 0);
-  tft.setTextColor(TFT_YELLOW, TFT_BLACK);
-  tft.drawString("Mod.     : " + String(bandModeDesc[band[bandIdx].prefmod]), 5, 10);
-  if ( currentMode != FM)  tft.drawString("Freq.    : " + String(currentFrequency, 0) + " KHz", 5, 35);
-  else tft.drawString("Freq.    : " + String(currentFrequency / 100, 1) + " MHz", 5, 35);
-  si4735.getCurrentReceivedSignalQuality();
-  tft.drawString("RSSI     : " + String(si4735.getCurrentRSSI()) + "dBuV", 5, 60); // si4735.getCurrentSNR()
-  tft.drawString("SNR      : " + String(si4735.getCurrentSNR()) + "uV", 5, 85);
-  if (  currentMode == FM ) {
-    sprintf(buffer, "%s", (si4735.getCurrentPilot()) ? "STEREO" : "MONO");
-    tft.drawString(buffer, 160, 97);
-  }
-
-  si4735.getAutomaticGainControl();
-  si4735.getCurrentReceivedSignalQuality();
-  tft.drawString("LNA GAIN index: " + String(si4735.getAgcGainIndex()) + "/" + String(currentAGCAtt), 5, 110);
-  tft.drawString("Volume   : )" + String(si4735.getVolume()), 5, 135);
-  sprintf(buffer, "%s", (si4735.isAgcEnabled()) ? "AGC ON " : "AGC OFF");
-  tft.drawString(buffer, 5, 160);
-  if (bfoOn) tft.drawString("BFO ON  ", 180, 160);
-  else tft.drawString("BFO OFF ", 180, 160);
-
-
-  tft.drawString("AVC max GAIN  : " + String(si4735.getCurrentAvcAmMaxGain()), 5, 172);
-
-  tft.drawString("Ant. Cap = " + String(si4735.getAntennaTuningCapacitor()) , 5, 185);
-
-  tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft.drawString("BandIdx  : " + String(bandIdx) + "  " + String(band[bandIdx].bandName) , 5, 210);
-  tft.drawString("BwIdxSSB : " + String(bandwidthSSB[bwIdxSSB]) + " KHz", 5, 235);
-  tft.drawString("BwIdxAM  : " + String(bandwidthAM[bwIdxAM]) + " KHz", 5, 260);
-  tft.drawString("Stepsize : " + String(currentStep), 5, 285);
-  int vsupply = analogRead(ENCODER_SWITCH);
-  tft.drawString("Power Supply : " + String(((1.78 / 2140)*vsupply) * 1.842) + " V.", 5, 310);
-
   while (x == 0) {
-    press1 = tft.getTouch(&x, &y);
-    int m = 0;
+    tft.setTextSize(1);
+    tft.setCursor(0, 0);
+    tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+    tft.drawString("Mod.     : " + String(bandModeDesc[band[bandIdx].prefmod]), 5, 10);
+    if ( currentMode != FM)  tft.drawString("Freq.    : " + String(currentFrequency, 0) + " KHz", 5, 20);
+    else tft.drawString("Freq.    : " + String(currentFrequency / 100, 1) + " MHz", 5, 20);
+    si4735.getCurrentReceivedSignalQuality();
+    tft.drawString("RSSI     : " + String(si4735.getCurrentRSSI()) + "dBuV", 5, 30); // si4735.getCurrentSNR()
+    tft.drawString("SNR      : " + String(si4735.getCurrentSNR()) + "uV", 5, 40);
+    if (  currentMode == FM ) {
+      sprintf(buffer, "%s", (si4735.getCurrentPilot()) ? "STEREO" : "MONO");
+      tft.drawString("         : " + String(buffer), 5, 50);
+    }
+    si4735.getAutomaticGainControl();
+    si4735.getCurrentReceivedSignalQuality();
+    tft.drawString("LNA GAIN index: " + String(si4735.getAgcGainIndex()) + "/" + String(currentAGCAtt), 5, 60);
+    tft.drawString("Volume   : )" + String(si4735.getVolume()), 5, 70);
+    sprintf(buffer, "%s", (si4735.isAgcEnabled()) ? "AGC ON " : "AGC OFF");
+    tft.drawString(buffer, 5, 80);
+    if (bfoOn) tft.drawString("BFO ON  ", 5, 90);
+    else tft.drawString("BFO OFF ", 5, 90);
+    tft.drawString("AVC max GAIN  : " + String(si4735.getCurrentAvcAmMaxGain()), 5, 100);
+    tft.drawString("Ant. Cap = " + String(si4735.getAntennaTuningCapacitor()) , 5, 110);
+
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    tft.drawString("BandIdx  : " + String(bandIdx) + "  " + String(band[bandIdx].bandName) , 5, 140);
+    tft.drawString("BwIdxSSB : " + String(bandwidthSSB[bwIdxSSB]) + " KHz", 5, 150);
+    tft.drawString("BwIdxAM  : " + String(bandwidthAM[bwIdxAM]) + " KHz", 5, 160);
+    tft.drawString("Stepsize : " + String(currentStep), 5, 170);
+    int vsupply = analogRead(ENCODER_SWITCH);
+    //Serial.println(vsupply);
+    tft.drawString("Power Supply : " + String(((1.66 / 1850)*vsupply) * 2) + " V.", 5, 180);
+    
+    press1 = tft.getTouch(&x, &y);  
   }
+  x=y=0;
   Beep(1, 0);
   delay(400);
 }
 
 
-
+//=======================================================================================
 void showRDSMsg() {
+//=======================================================================================
   rdsMsg[35] = bufferRdsMsg[35] = '\0';
   if (strcmp(bufferRdsMsg, rdsMsg) == 0) return;
   if ((FirstLayer) or (ThirdLayer)) tft.drawString(String(rdsMsg) , XFreqDispl + 12, YFreqDispl + 380);
   delay(250);
 }
 
+//=======================================================================================
 void showRDSStation() {
+//=======================================================================================
   if (strcmp(bufferStatioName, stationName) == 0 ) return;
   if ((FirstLayer) or (ThirdLayer)) {
     //tft.setCursor(XFreqDispl +120, YFreqDispl +80);
@@ -2052,14 +2320,17 @@ void showRDSStation() {
   delay(250);
 }
 
+//=======================================================================================
 void showRDSTime() {
+//=======================================================================================
   if (strcmp(bufferRdsTime, rdsTime) == 0 ) return;
   if ((FirstLayer) or (ThirdLayer)) tft.drawString(String(rdsTime) , XFreqDispl + 12, YFreqDispl + 400);
   //delay(250);
 }
 
+//=======================================================================================
 void checkRDS() {
-
+//=======================================================================================
   si4735.getRdsStatus();
   if (si4735.getRdsReceived()) {
     if (si4735.getRdsSync() && si4735.getRdsSyncFound() ) {
@@ -2073,5 +2344,161 @@ void checkRDS() {
       if ( stationName != NULL )   showRDSStation();
       //if ( rdsTime != NULL ) showRDSTime();
     }
+  }
+}
+
+//=======================================================================================
+void FreqDispl()
+//=======================================================================================
+{  
+  if ((FirstLayer) or (ThirdLayer)) { 
+    currentFrequency = si4735.getFrequency();  
+    tft.setTextSize(4);
+    tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+    tft.setTextDatum(BC_DATUM);
+    tft.setTextPadding(0);
+
+    tft.fillRect( XFreqDispl + 6, YFreqDispl + 28 , 228, 32, TFT_BLACK); // Black freq. field
+    if ((VOLbut) or (AGCgainbut)){
+      if (VOLbut) {
+        tft.setTextSize(4);
+        tft.drawString(String(map(currentVOL, 20, 63, 0, 100)), XFreqDispl + 60, YFreqDispl + 61);
+        tft.setTextSize(2);
+          tft.drawString( " % Volume", XFreqDispl + 160, YFreqDispl + 61);
+      }
+      if (AGCgainbut){
+        tft.setTextSize(4);
+        tft.drawString(String(currentAGCgain), XFreqDispl + 60, YFreqDispl + 61);
+        tft.setTextSize(2);
+        tft.drawString("Attn-index", XFreqDispl + 160, YFreqDispl + 61);
+      }
+     
+    } else {
+      if (band[bandIdx].bandType == MW_BAND_TYPE || band[bandIdx].bandType == LW_BAND_TYPE) {
+
+        if (bfoOn) {
+          tft.setTextSize(4);
+          tft.drawString(String(currentBFO), XFreqDispl + 120, YFreqDispl + 61);
+        } else {
+          Displayfreq =  currentFrequency;
+          tft.setTextSize(4);
+          tft.drawString(String(Displayfreq, 0), XFreqDispl + 120, YFreqDispl + 61);
+          tft.setTextSize(2);
+          tft.drawString("KHz", XFreqDispl + 215, YFreqDispl + 61);
+        }
+      }
+      if (band[bandIdx].bandType == FM_BAND_TYPE) {
+        Displayfreq =  currentFrequency / 100;
+
+        tft.setTextSize(4);
+
+        tft.drawString(String(Displayfreq, 1), XFreqDispl + 120, YFreqDispl + 61);
+
+        tft.setTextSize(2);
+        tft.drawString("MHz", XFreqDispl + 215, YFreqDispl + 61);
+      }
+      if (band[bandIdx].bandType == SW_BAND_TYPE) {
+        if (bfoOn) {
+          tft.setTextSize(4);
+          tft.drawString(String(currentBFO), XFreqDispl + 120, YFreqDispl + 61);
+        }
+        else {
+          Displayfreq =  currentFrequency / 1000;
+          tft.setTextSize(4);
+          tft.drawString(String(Displayfreq, 3), XFreqDispl + 120, YFreqDispl + 61);
+          tft.setTextSize(2);
+          tft.drawString("MHz", XFreqDispl + 215, YFreqDispl + 61);
+        }
+      }
+    }
+  }
+}
+
+//=======================================================================================
+void SeekFreq (uint16_t freq)  {
+//=======================================================================================
+  if ((FirstLayer)or(ThirdLayer))  {
+    currentFrequency = freq;
+    tft.setTextSize(4);
+    tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+    tft.setTextDatum(BC_DATUM);
+    tft.setTextPadding(0);
+    tft.fillRect( XFreqDispl + 6, YFreqDispl +28 , 228, 32, TFT_BLACK);// Black freq. field
+    if (band[bandIdx].bandType == MW_BAND_TYPE || band[bandIdx].bandType == LW_BAND_TYPE) {
+        Displayfreq =  currentFrequency;
+        tft.setTextSize(4);
+        tft.drawString(String(Displayfreq,0), XFreqDispl +120,YFreqDispl +61);
+        tft.setTextSize(2);
+        tft.drawString("KHz", XFreqDispl +215,YFreqDispl +61);
+      }
+    if (band[bandIdx].bandType == FM_BAND_TYPE){
+      Displayfreq =  currentFrequency/100;
+      tft.setTextSize(4);
+      tft.drawString(String(Displayfreq,1), XFreqDispl +120,YFreqDispl +61);
+      tft.setTextSize(2);
+      tft.drawString("MHz", XFreqDispl +215,YFreqDispl +61);
+    } 
+    if (band[bandIdx].bandType == SW_BAND_TYPE){
+        Displayfreq =  currentFrequency/1000;
+        tft.setTextSize(4);
+        tft.drawString(String(Displayfreq,3), XFreqDispl +120,YFreqDispl +61);
+        tft.setTextSize(2);
+        tft.drawString("MHz", XFreqDispl +215,YFreqDispl +61);
+      }
+     }    
+   }
+
+//=======================================================================================
+void DrawDispl()
+//=======================================================================================
+{
+  tft.fillRect(XFreqDispl, YFreqDispl, 240, 90, TFT_WHITE);
+  tft.fillRect(XFreqDispl + 5, YFreqDispl + 5, 230, 80, TFT_BLACK);
+  tft.setTextSize(1);
+  tft.setTextColor(TFT_GREEN, TFT_BLACK);
+  tft.setTextDatum(BC_DATUM);
+  tft.drawString(band[bandIdx].bandName, XFreqDispl + 160, YFreqDispl + 20);
+  FreqDispl();
+  //new
+  tft.setTextSize(1);
+  tft.setTextColor(TFT_GREEN, TFT_BLACK);
+  tft.setTextDatum(BC_DATUM);
+  tft.drawString("AGC", XFreqDispl + 50, YFreqDispl + 16);
+  si4735.getAutomaticGainControl();
+    if (si4735.isAgcEnabled()) {
+      tft.setTextColor(TFT_RED, TFT_BLACK);
+      tft.drawString("On", XFreqDispl + 50, YFreqDispl + 26);
+      tft.setTextColor(TFT_ORANGE, TFT_BLACK);
+    } else {
+      if (AGCgain == 0)   {
+        tft.drawString("Off", XFreqDispl + 50, YFreqDispl + 26);
+      } else {
+        tft.drawString(String(currentAGCgain), XFreqDispl + 50, YFreqDispl + 26);  
+      }
+    }
+  
+  if (band[bandIdx].bandType != FM_BAND_TYPE) {
+    tft.setTextSize(1);
+    tft.setTextColor(TFT_GREEN, TFT_BLACK);
+    tft.setTextDatum(BC_DATUM);
+    tft.drawString("BFO", XFreqDispl + 20, YFreqDispl + 16);
+    //tft.drawString("AGC", XFreqDispl + 50, YFreqDispl + 16);
+    tft.setTextPadding(tft.textWidth(" -88"));
+
+    if (bfoOn) {
+      tft.setTextColor(TFT_GREEN, TFT_BLACK);
+      tft.drawString(String(currentBFOStep), XFreqDispl + 20, YFreqDispl + 26);
+      tft.setTextColor(TFT_GREEN, TFT_BLACK);
+    } else {
+      tft.setTextColor(TFT_GREEN, TFT_BLACK);
+      tft.drawString("   ", XFreqDispl + 20, YFreqDispl + 26);
+    }
+    tft.setTextColor(TFT_GREEN, TFT_BLACK);
+    tft.drawString(bandModeDesc[currentMode], XFreqDispl + 80, YFreqDispl + 20);
+    tft.setTextPadding(tft.textWidth("2.2kHz"));
+    if (currentMode == AM) BWtext = bandwidthAM[bwIdxAM];
+    else BWtext = bandwidthSSB[bwIdxSSB];
+    tft.drawString(BWtext + "KHz", XFreqDispl + 120, YFreqDispl + 20);
+    tft.drawString(String(band[bandIdx].currentStep) + "KHz", XFreqDispl + 200, YFreqDispl + 20);
   }
 }
