@@ -17,12 +17,18 @@ Program features :
     SW band support (2.3–26.1 MHz).
   
     LW band support (153–279 kHz).
+    
+    S-meter (scale is fake)
+    
+    Volume indicator.
   
-    FM Stereo and RDS.
+    FM Stereo and RDS. RDS has a SNR theshold and on / off button.
     
     AM with 9 & 10 KHz tuningstep.
   
     FM, AM and SSB (USB & LSB) modulation. SSB controlled by BFO.
+    
+    Preset for FM controlled by rotary encoder. May by finished by rotary encoder switch or automatically by waking up the screen. 
   
     Band selection for Broadcast (17) and Ham bands (11).
     
@@ -36,13 +42,14 @@ Program features :
   
     Mute.
   
-    Volume control by rotary encoder.
+    Volume control by rotary encoder. Function is switching off after 30 sec automatically.
   
     AM/FM seek tuning.
   
     Automatic frequency control (AFC)
   
     Automatic gain control (AGC)
-    Manual gain control with the rotary encoder.
+    Manual gain control by the rotary encoder.
  
-    To save power from the battery, display is switching off after 5 minutes.
+    To save power from the battery, display is switching off after 5 minutes. 
+    Display is waking up by the use of one of the controllers e.g. screen, rotary controller or rotary controller switch
