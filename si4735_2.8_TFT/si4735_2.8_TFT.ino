@@ -48,7 +48,7 @@
 //  |   SDI      |     23      | 06 |            |            |            |        Encoder        1,2,3
 //  |   SCK      |     18      | 07 |            |            |            |        Encoder switch 4,5
 //  |   LED Coll.|     14 2K   | 08 |            |            |            |        Display LED
-//  |   SDO      |     19      | 09 |            |            |            |        Emmitor  V2 BC557 to 3.3 V
+//  |   SDO      |             | 09 |            |            |            |        Emmitor  V2 BC557 to 3.3 V
 //  |   T_CLK    |     18      | 10 |            |            |            |        Base with 2K to pin 14 (Display_Led)
 //  |   T_CS     |      5      | 11 |            |            |            |        Collector to led pin display
 //  |   T_DIN    |     23      | 12 |            |            |            |
