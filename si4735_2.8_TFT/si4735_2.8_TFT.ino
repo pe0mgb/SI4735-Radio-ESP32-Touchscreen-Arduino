@@ -713,6 +713,22 @@ TFT_eSPI tft = TFT_eSPI();
 
 SI4735 si4735;
 
+void IRAM_ATTR RotaryEncFreq()
+{
+  uint8_t encoderStatus = encoder.process();
+  if (encoderStatus)
+  {
+    if (encoderStatus == DIR_CW)
+    {
+      encoderCount = 1;
+    }
+    else
+    {
+      encoderCount = -1;
+    }
+  }
+}
+
 //=======================================================================================
 void IRAM_ATTR RotaryEncFreq()
 //=======================================================================================
