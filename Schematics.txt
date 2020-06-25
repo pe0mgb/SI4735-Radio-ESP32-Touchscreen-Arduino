@@ -1,1 +1,0 @@
-The battery circuit will be changed due to too much voltage loss
