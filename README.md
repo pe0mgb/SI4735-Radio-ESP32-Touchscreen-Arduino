@@ -4,7 +4,7 @@ The sketch is developed for running at a ESP32 WROOM-32, a 2.8 inch 240*320 Touc
 
 In line 74 and 75 of the sketch you may select now how to use the display, VERTICAL or HORIZONTAL.
 
-The status of the radio is saved in the EEPROM of the ESP32. There are stories how many times you may write an EEPROM adress in the controler. I see figures between 100,000 and 1,000,000 times. Before writing, the program checks the content of the EEPROM. Only when the content is different with the new data , the program will write the data in the EEPROM. If after 3 years of intensive use ( about 100 times writing every day), unexpectedly a memory cell is defect you can simple use an other part of the EEPROM by changing the offsetEEPROM in line 673.
+The status of the radio is saved in the EEPROM of the ESP32. There are stories how many times you may write an EEPROM adress in the controler. I see figures between 100,000 and 1,000,000 times. Before writing, the program checks the content of the EEPROM. Only when the content is different with the new data , the program will write the data in the EEPROM. If after 3 years of intensive use ( about 100 times writing every day), unexpectedly a memory cell is defect you can simple use an other part of the EEPROM by changing the offsetEEPROM in line 683.
 
 The manual controle of the radio is 100% done by the touchscreen and Rotary Encoder.
 
@@ -14,11 +14,11 @@ Program features :
   
     AM (MW) band support (520–1710 kHz).
   
-    SW band support (2.3–26.1 MHz).
+    SW band support (2.3–30.0 MHz).
   
     LW band support (153–279 kHz).
     
-    S-meter (scale is fake)
+    S-meter
     
     SNR and RSSI indication.
     
@@ -26,12 +26,12 @@ Program features :
   
     FM Stereo and RDS. RDS has a SNR theshold and on / off button.
     
-    AM with 9 & 10 KHz tuningstep.
+    AM and SSB with 1,5,9 & 10 KHz tuningstep.
   
     FM, AM and SSB (USB & LSB) modulation. SSB controlled by BFO.
     
     Preset for FM controlled by rotary encoder. 
-    May by finished by rotary encoder switch or automatically by waking up the screen. 
+    May be finished by rotary encoder switch or automatically by waking up the screen. 
   
     Band selection for Broadcast (17) and Ham bands (11).
     
@@ -41,7 +41,7 @@ Program features :
   
     On screen Keyboard for frequency control.
   
-    Tuningstep control for all broad and ham bands (except FM)
+    Tuningstep control for all broadcast and ham bands (except FM)
   
     Mute.
   
