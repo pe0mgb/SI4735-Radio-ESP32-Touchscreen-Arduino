@@ -2,7 +2,7 @@
 This sketch is using the SI4735 library developed by Ricardo PU2CLR.
 The sketch is developed for running at a ESP32 WROOM-32, a 2.8 inch 240*320 Touchscreen with an ILI9341 controler and Rotary Encoder with Switch. For the TFT display the ESP_eSPI library is used. The ILI9341 config file is available.
 
-Schematics for SI4732 added. Software 100 % compatibly.
+Schematics for SI4732 added. Software 100 % compatible.
 
 In line 74 and 75 of the sketch you may select now how to use the display, VERTICAL or HORIZONTAL.
 
