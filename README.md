@@ -1,8 +1,10 @@
 # SI4735-Radio-ESP32-2.8 inch TFT Touchscreen-Arduino
 This sketch is using the SI4735 library developed by Ricardo PU2CLR.
 The sketch is developed for running at a ESP32 WROOM-32, a 2.8 inch 240*320 Touchscreen with an ILI9341 controler and Rotary Encoder with Switch. For the TFT display the ESP_eSPI library is used. The ILI9341 config file is available.
+
 There seems to be some confusion about the use of the TFT-eSPI library. 
 This will solve the problem :
+
 Move the file Setup1_ILI9341.h to the root or top directory of the TFT_eSPI library. Replace the file User_Setup_Select.h in same directory by the file User_Setup_Select.h in my github. The compiler runs after that smoothly.
 
 Schematics for SI4732 added. Software 100 % compatible.
