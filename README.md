@@ -1,6 +1,9 @@
 # SI4735-Radio-ESP32-2.8 inch TFT Touchscreen-Arduino
 This sketch is using the SI4735 library developed by Ricardo PU2CLR.
 The sketch is developed for running at a ESP32 WROOM-32, a 2.8 inch 240*320 Touchscreen with an ILI9341 controler and Rotary Encoder with Switch. For the TFT display the ESP_eSPI library is used. The ILI9341 config file is available.
+There seems to be some confusion about the use of the TFT-eSPI library. 
+This will solve the problem :
+Move the file Setup1_ILI9341.h to the root or top directory of the TFT_eSPI library. Replace the file User_Setup_Select.h in same directory by the file User_Setup_Select.h in my github. The compiler runs after that smoothly.
 
 Schematics for SI4732 added. Software 100 % compatible.
 
@@ -9,6 +12,8 @@ In line 74 and 75 of the sketch you may select now how to use the display, VERTI
 The status of the radio is saved in the EEPROM of the ESP32. There are stories how many times you may write an EEPROM adress in the controler. I see figures between 100,000 and 1,000,000 times. Before writing, the program checks the content of the EEPROM. Only when the content is different with the new data , the program will write the data in the EEPROM. If after 3 years of intensive use ( about 100 times writing every day), unexpectedly a memory cell is defect you can simple use an other part of the EEPROM by changing the offsetEEPROM in line 683.
 
 The manual controle of the radio is 100% done by the touchscreen and Rotary Encoder.
+
+
 
 Program features :
 
