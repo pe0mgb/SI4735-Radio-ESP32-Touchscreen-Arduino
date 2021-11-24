@@ -1,10 +1,13 @@
 In my version 3.3, I made choosing between the crystal and the clock generator unnecessarily complex. This was very confusing for some people. This has been resolved in the new version 3.4. To use the crystal, as in my previous designs or for the ATS-25, you don't have to change anything anymore. 
 The use of the clock generator SI5351 must be indicated in the sketch.
+
 For crystal (default) :
+
 Line 82 #define IhaveCrystal
 Line 83 // #define IhaveSI5351
 
 For si5351 :
+
 Line 82 //#define IhaveCrystal
 Line 83 #define IhaveSI5351
 
